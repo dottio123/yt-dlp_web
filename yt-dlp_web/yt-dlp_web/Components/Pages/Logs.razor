@@ -1,0 +1,114 @@
+@page "/logs"
+@rendermode InteractiveServer
+@inject ILoggingService Logger
+
+<PageTitle>yt-dlp_web | Logs</PageTitle>
+
+<h1>System Logs</h1>
+
+<div class="mb-3">
+    <button class="btn btn-sm btn-secondary" @onclick="RefreshLogs">Refresh</button>
+    <div class="btn-group ms-2" role="group">
+        <input type="radio" class="btn-check" id="allLogs" autocomplete="off" checked="@(currentFilter == "all")"
+            @onchange="@((ChangeEventArgs e) => FilterLogsBy("all"))" />
+        <label class="btn btn-outline-primary" for="allLogs">All</label>
+
+        <input type="radio" class="btn-check" id="downloadLogs" autocomplete="off"
+            checked="@(currentFilter == "download")" @onchange="@((ChangeEventArgs e) => FilterLogsBy("download"))" />
+        <label class="btn btn-outline-primary" for="downloadLogs">Downloads</label>
+
+        <input type="radio" class="btn-check" id="updateLogs" autocomplete="off" checked="@(currentFilter == "update")"
+            @onchange="@((ChangeEventArgs e) => FilterLogsBy("update"))" />
+        <label class="btn btn-outline-primary" for="updateLogs">Updates</label>
+
+        <input type="radio" class="btn-check" id="errorLogs" autocomplete="off" checked="@(currentFilter == "error")"
+            @onchange="@((ChangeEventArgs e) => FilterLogsBy("error"))" />
+        <label class="btn btn-outline-primary" for="errorLogs">Errors</label>
+    </div>
+</div>
+
+@if (filteredLogs.Count == 0)
+{
+    <p class="text-muted">No logs available.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped table-sm">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Message</th>
+                    <th>Client IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var log in filteredLogs)
+                {
+                    var typeClass = log.Type switch
+                    {
+                        "Download" => "badge bg-info",
+                        "Update" => "badge bg-success",
+                        "Error" => "badge bg-danger",
+                        _ => "badge bg-secondary"
+                    };
+
+                    // Show the main type, but if it's an error with a related type, show both
+                    var displayType = log.Type == "Error" && !string.IsNullOrEmpty(log.RelatedType)
+                    ? $"{log.RelatedType} - Error"
+                    : log.Type;
+
+                    <tr>
+                        <td>@log.Timestamp.ToString("g")</td>
+                        <td><span class="@typeClass">@displayType</span></td>
+                        <td>
+                            @log.Message
+                            @if (!string.IsNullOrEmpty(log.FileName))
+                            {
+                                <br />
+                                <small class="text-muted">File: @log.FileName</small>
+                            }
+                        </td>
+                        <td>@(log.ClientIp ?? "-")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<LogEntry> allLogs = new();
+    private List<LogEntry> filteredLogs = new();
+    private string currentFilter = "all";
+
+    protected override void OnInitialized()
+    {
+        RefreshLogs();
+    }
+
+    private void RefreshLogs()
+    {
+        allLogs = Logger.GetLogs(200);
+        ApplyFilter();
+    }
+
+    private void FilterLogsBy(string filter)
+    {
+        currentFilter = filter;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var logs = currentFilter switch
+        {
+            "download" => Logger.GetDownloadLogs(100),
+            "update" => Logger.GetUpdateLogs(100),
+            "error" => allLogs.Where(l => l.Type == "Error").ToList(),
+            _ => allLogs
+        };
+        filteredLogs = logs.OrderByDescending(l => l.Timestamp).ToList();
+    }
+}

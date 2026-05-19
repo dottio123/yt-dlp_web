@@ -1,0 +1,311 @@
+@page "/"
+@rendermode InteractiveServer
+@using yt_dlp_web.Services
+@inject IDownloadService DownloadService
+@inject IUpdateService UpdateService
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IClientInfoService ClientInfo
+
+<PageTitle>yt-dlp_web | Download</PageTitle>
+
+<h1>Download a video</h1>
+
+<div class="mb-3">
+    <label class="form-label">Video URL</label>
+    <input class="form-control" @bind="videoUrl" placeholder="https://..." />
+    <div class="form-text">Paste the video link and click Download. The server will run yt-dlp and return a link when
+        finished.</div>
+</div>
+
+<div class="mb-3">
+    <button class="btn btn-primary" @onclick="StartDownload" disabled="@(isBusy || isUpdating)">Download</button>
+    <button class="btn btn-secondary" @onclick="ManualUpdate" disabled="@(isBusy || isUpdating)">
+        @if (isUpdating)
+        {
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+        }
+        Update yt-dlp.exe
+    </button>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="toggleOptions" type="button">
+            @(showOptions ? "▼ Download Options" : "▶ Download Options")
+        </button>
+    </div>
+    @if (showOptions)
+    {
+       <div class="card-body">
+          <!-- <div class="mb-3">
+               <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="extractAudio" @bind="extractAudio" />
+                    <label class="form-check-label" for="extractAudio">
+                        Extract Audio Only
+                    </label>
+                </div> 
+            </div> -->
+
+            @if (extractAudio)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Audio Format</label>
+                    <select class="form-select" @bind="audioFormat">
+                        <option value="mp3">MP3</option>
+                        <option value="m4a">M4A</option>
+                        <option value="aac">AAC</option>
+                    </select>
+                </div>
+            }
+
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="downloadSubs" @bind="downloadSubs" />
+                    <label class="form-check-label" for="downloadSubs">
+                        Download Subtitles
+                    </label>
+                </div>
+            </div> 
+
+            @if (downloadSubs)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Subtitle Languages</label>
+                    <select class="form-select" @bind="subLangs">
+                        <option value="en">English Only</option>
+                        <option value="all">All Available</option>
+                    </select>
+                </div>
+            }
+
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="includeThumbnail" @bind="includeThumbnail" />
+                    <label class="form-check-label" for="includeThumbnail">
+                        Download Thumbnail
+                    </label>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (isBusy)
+{
+    <p class="mt-2">Downloading... Please wait.</p>
+}
+
+@if (isUpdating)
+{
+    <p class="mt-2">Updating yt-dlp... Please wait.</p>
+}
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger mt-2">@error</div>
+}
+
+@if (!string.IsNullOrEmpty(updateMessage))
+{
+    <div class="alert alert-success mt-2">@updateMessage</div>
+}
+
+@if (!string.IsNullOrEmpty(resultUrl))
+{
+    <div class="alert alert-success mt-2">
+        <ul class="mb-0 list-unstyled">
+            <li>Download ready: <a href="@resultFullUrl" target="_blank">@fileName</a></li>
+            @if (!string.IsNullOrEmpty(thumbFullUrl))
+            {
+                <li>Thumbnail ready: <a href="@thumbFullUrl" target="_blank">@thumbFileName</a></li>
+            }
+            @if (resultSubtitles.Count > 0)
+            {
+                @foreach (var sub in resultSubtitles)
+                {
+                    <li>Subtitle ready: <a href="@sub.url" target="_blank">@sub.file</a></li>
+                }
+            }
+        </ul>
+    </div>
+}
+
+<hr class="my-4" />
+
+<div class="alert alert-info">
+    <h5>About the Update Button</h5>
+    <p class="mb-2">
+        YouTube actively works to prevent video downloads. If downloads stop working, it's often because YouTube has
+        updated their anti-scraping measures.
+        Clicking <strong>Update yt-dlp.exe</strong> will fetch the latest version, which typically includes fixes for
+        these protections.
+    </p>
+    <p class="text-muted mb-0">
+        Updates are automatically checked daily at midnight. You can also manually trigger an update using the button
+        above.
+    </p>
+</div>
+
+<div class="mt-3 text-center">
+    <small class="text-muted">
+        Learn more about yt-dlp: <a href="https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#usage-and-options"
+            target="_blank" rel="noopener noreferrer">yt-dlp on GitHub</a>
+    </small>
+</div>
+
+@code {
+    private string videoUrl = string.Empty;
+    private bool isBusy;
+    private bool isUpdating;
+    private bool showOptions;
+    private string? error;
+    private string? updateMessage;
+    private string? fileName;
+    private string? resultUrl;
+    private string? resultFullUrl;
+    private string? thumbUrl;
+    private string? thumbFileName;
+    private string? thumbFullUrl;
+    private List<ResultFile> resultSubtitles = new();
+    private bool extractAudio;
+    private string audioFormat = "mp3";
+    private bool downloadSubs;
+    private string subLangs = "en";
+    private bool includeThumbnail;
+
+    private void toggleOptions()
+    {
+        showOptions = !showOptions;
+    }
+
+    private async Task StartDownload()
+    {
+        error = null;
+        fileName = null;
+        resultUrl = null;
+        resultFullUrl = null;
+        thumbUrl = null;
+        thumbFileName = null;
+        thumbFullUrl = null;
+        resultSubtitles.Clear();
+        updateMessage = null;
+
+        if (string.IsNullOrWhiteSpace(videoUrl))
+        {
+            error = "Please enter a video URL.";
+            return;
+        }
+
+        isBusy = true;
+        try
+        {
+            var req = new DownloadRequest
+            {
+                Url = videoUrl,
+                ClientIp = ClientInfo.GetClientIp(),
+                ExtractAudio = extractAudio,
+                AudioFormat = audioFormat,
+                DownloadSubs = downloadSubs,
+                SubLangs = subLangs,
+                IncludeThumbnail = includeThumbnail
+            };
+
+            var result = await DownloadService.DownloadAsync(req);
+
+            if (!result.Success)
+            {
+                error = result.ErrorMessage ?? "Unexpected server error.";
+                return;
+            }
+
+            resultUrl = result.Url;
+            fileName = result.File ?? Path.GetFileName(result.Url);
+            // Make absolute URL for the download link
+            resultFullUrl = Nav.ToAbsoluteUri($"download/{Uri.EscapeDataString(fileName)}").ToString();
+
+            if (!string.IsNullOrEmpty(result.ThumbnailUrl))
+            {
+                thumbUrl = result.ThumbnailUrl;
+                thumbFileName = result.ThumbnailFile ?? Path.GetFileName(result.ThumbnailUrl);
+                thumbFullUrl = Nav.ToAbsoluteUri($"download/{Uri.EscapeDataString(thumbFileName)}").ToString();
+            }
+
+            foreach (var sub in result.Subtitles)
+            {
+                if (!string.IsNullOrEmpty(sub.Url) && !string.IsNullOrEmpty(sub.File))
+                {
+                    var absUrl = Nav.ToAbsoluteUri($"download/{Uri.EscapeDataString(sub.File)}").ToString();
+                    resultSubtitles.Add(new ResultFile { url = absUrl, file = sub.File });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task ManualUpdate()
+    {
+        error = null;
+        updateMessage = null;
+
+        isUpdating = true;
+        try
+        {
+            var resp = await Http.PostAsync("api/update", null);
+
+            if (resp.IsSuccessStatusCode)
+            {
+                var content = await resp.Content.ReadFromJsonAsync<UpdateResponse>();
+
+                if (content?.Success == true)
+                {
+                    if (content.AlreadyLatest)
+                    {
+                        updateMessage = "✓ Already at latest version";
+                    }
+                    else
+                    {
+                        updateMessage = "✓ Update successful";
+                    }
+                }
+                else
+                {
+                    error = $"Update failed: {content?.Message ?? "Unknown error"}";
+                }
+            }
+            else
+            {
+                var txt = await resp.Content.ReadAsStringAsync();
+                error = $"Update failed: {resp.StatusCode} - {txt}";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Update error: {ex.Message}";
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+
+    private class ResultFile
+    {
+        public string? url { get; set; }
+        public string? file { get; set; }
+    }
+
+    private class UpdateResponse
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+        public bool AlreadyLatest { get; set; }
+    }
+}
