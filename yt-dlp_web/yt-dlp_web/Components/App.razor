@@ -6,10 +6,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="@(new Uri(navManager.BaseUri).AbsolutePath)" />
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('yt_dlp_theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', t);
+                document.documentElement.setAttribute('data-bs-theme', t);
+            } catch(e){}
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="yt-dlp_web.styles.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=3" />
+    <link rel="icon" type="image/png" href="favicon.png?v=3" />
+    <link rel="shortcut icon" href="favicon.ico?v=3" />
+    <script src="theme.js"></script>
     <HeadOutlet />
 </head>
 

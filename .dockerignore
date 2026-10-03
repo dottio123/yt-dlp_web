@@ -1,0 +1,27 @@
+**/bin
+**/obj
+**/.git
+**/.vs
+**/.vscode
+**/.nuget
+**/*.user
+**/*.suo
+**/*.log
+**/*.gz
+**/*.zip
+Dockerfile*
+docker-compose*.yml
+*.md
+*.slnx
+Package/
+docs/
+caddy/
+publish_client/
+config/
+**/node_modules
+
+# OneDrive system files
+~$*
+Thumbs.db
+ehthumbs.db
+desktop.ini

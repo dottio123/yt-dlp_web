@@ -1,0 +1,110 @@
+@rendermode InteractiveServer
+
+@if (IsOpen)
+{
+    <div class="modal-backdrop-custom" @onclick="HandleClose">
+        <div class="modal-content-custom p-4" style="max-width: 800px;" @onclick:stopPropagation>
+            <div class="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div class="d-flex align-items-center gap-2 overflow-hidden me-3">
+                    <div style="background: var(--accent-red); width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;">
+                        @if (IsAudio)
+                        {
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 18V5l12-2v13"></path>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <circle cx="18" cy="16" r="3"></circle>
+                            </svg>
+                        }
+                        else
+                        {
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                        }
+                    </div>
+                    <h6 class="mb-0 fw-bold text-truncate" title="@Title">@(string.IsNullOrWhiteSpace(Title) ? "Media Preview" : Title)</h6>
+                </div>
+                <button type="button" class="btn btn-sm btn-ghost p-1 flex-shrink-0" @onclick="HandleClose" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="media-player-wrapper mb-3">
+                @if (IsAudio)
+                {
+                    <div class="p-4 text-center">
+                        <div class="mb-3">
+                            <div style="width: 72px; height: 72px; margin: 0 auto; background: var(--accent-red-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--accent-red);">
+                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18V5l12-2v13"></path>
+                                    <circle cx="6" cy="18" r="3"></circle>
+                                    <circle cx="18" cy="16" r="3"></circle>
+                                </svg>
+                            </div>
+                        </div>
+                        <audio controls autoplay src="@MediaUrl" style="width: 100%; max-width: 500px;">
+                            Your browser does not support the audio element.
+                        </audio>
+                    </div>
+                }
+                else
+                {
+                    <video controls autoplay playsinline src="@MediaUrl" preload="metadata">
+                        @if (!string.IsNullOrEmpty(SubtitleUrl))
+                        {
+                            <track src="@SubtitleUrl" kind="subtitles" srclang="en" label="Subtitles" default />
+                        }
+                        Your browser does not support the video element.
+                    </video>
+                }
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between pt-2 border-top" style="border-color: var(--border-color) !important;">
+                <span class="small text-muted text-truncate me-2">
+                    @if (IsAudio) { <span>Audio playback</span> } else { <span>Video playback with seek support</span> }
+                </span>
+                <div class="d-flex align-items-center gap-2">
+                    @if (!string.IsNullOrEmpty(DownloadUrl))
+                    {
+                        <a href="@DownloadUrl" class="btn btn-sm btn-youtube" download>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            <span>Download</span>
+                        </a>
+                    }
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="HandleClose">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? MediaUrl { get; set; }
+    [Parameter] public string? DownloadUrl { get; set; }
+    [Parameter] public string? SubtitleUrl { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool IsAudio
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(MediaUrl)) return false;
+            var ext = Path.GetExtension(MediaUrl).ToLowerInvariant();
+            return ext is ".mp3" or ".m4a" or ".aac" or ".wav" or ".ogg" or ".flac";
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

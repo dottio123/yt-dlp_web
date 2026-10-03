@@ -1,8 +1,10 @@
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.DataProtection;
 using yt_dlp_web.Client.Pages;
 using yt_dlp_web.Components;
 using yt_dlp_web.Services;
-
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.StaticFiles;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -13,15 +15,25 @@ builder.Services.AddRazorComponents()
 builder.Services.AddScoped(sp =>
 {
     var navManager = sp.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
-    return new HttpClient { BaseAddress = new Uri(navManager.BaseUri) };
+    var isDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true";
+    // For server-side rendering in Docker, use internal loopback as the external base URI may be inaccessible from inside.
+    var baseAddress = isDocker ? "http://localhost:8080/" : navManager.BaseUri;
+    return new HttpClient { BaseAddress = new Uri(baseAddress) };
 });
 
 builder.Services.AddHttpContextAccessor();
 
-// Configure logging service
+// Configure logging service — persist logs in the mounted config volume
 var contentRoot = builder.Environment.ContentRootPath;
-var logsPath = Path.Combine(contentRoot, "logs");
+var logsPath = Path.Combine(contentRoot, "config", "logs");
+Directory.CreateDirectory(logsPath);
 builder.Services.AddSingleton<ILoggingService>(new LoggingService(logsPath));
+
+// Configure Data Protection to persist keys in the mounted config volume
+var keysPath = Path.Combine(contentRoot, "config", "keys");
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+    .SetApplicationName("ytdlp_web");
 
 // Register client info service
 builder.Services.AddScoped<IClientInfoService, ClientInfoService>();
@@ -35,12 +47,20 @@ builder.Services.AddSingleton<IUpdateService, UpdateService>(sp =>
 );
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IUpdateService>() as UpdateService ?? throw new InvalidOperationException());
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Clear known networks and proxies so it works behind Docker/Caddy
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
-// Downloads directory under the web root (wwwroot/downloads)
-var downloadsRel = "downloads";
-var wwwroot = app.Environment.WebRootPath;
-var downloadsPath = Path.Combine(wwwroot, downloadsRel);
+app.UseForwardedHeaders();
+
+// Downloads directory — persist in the mounted config volume
+var downloadsPath = Path.Combine(contentRoot, "config", "downloads");
 Directory.CreateDirectory(downloadsPath);
 
 // Configure the HTTP request pipeline.
@@ -51,20 +71,30 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    // HSTS is handled by Caddy; skip UseHsts() and UseHttpsRedirection() inside the container.
 }
-
-app.UseHttpsRedirection();
 
 // Serve static files normally from wwwroot
 app.UseStaticFiles();
+
+// Content type provider for video, audio, and subtitle streaming
+var contentTypeProvider = new FileExtensionContentTypeProvider();
+contentTypeProvider.Mappings[".mp4"] = "video/mp4";
+contentTypeProvider.Mappings[".webm"] = "video/webm";
+contentTypeProvider.Mappings[".mkv"] = "video/x-matroska";
+contentTypeProvider.Mappings[".mp3"] = "audio/mpeg";
+contentTypeProvider.Mappings[".m4a"] = "audio/mp4";
+contentTypeProvider.Mappings[".aac"] = "audio/aac";
+contentTypeProvider.Mappings[".vtt"] = "text/vtt";
+contentTypeProvider.Mappings[".srt"] = "text/plain";
+contentTypeProvider.Mappings[".webp"] = "image/webp";
 
 // Serve files from the downloads folder under the request path /downloads
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(downloadsPath),
-    RequestPath = "/downloads"
+    RequestPath = "/downloads",
+    ContentTypeProvider = contentTypeProvider
 });
 
 app.UseAntiforgery();
@@ -109,7 +139,7 @@ app.MapGet("/download/{fileName}", (string fileName) =>
             return Results.NotFound();
 
         var stream = File.OpenRead(fullFilePath);
-        var contentType = "application/octet-stream";
+        var contentType = contentTypeProvider.TryGetContentType(decodedFileName, out var mime) ? mime : "application/octet-stream";
         return Results.File(stream, contentType, decodedFileName, enableRangeProcessing: true);
     }
     catch
@@ -163,6 +193,25 @@ app.MapDelete("/api/downloads/{fileName}", (string fileName) =>
         if (File.Exists(fullFilePath))
             File.Delete(fullFilePath);
 
+        return Results.Ok();
+    }
+    catch
+    {
+        return Results.BadRequest();
+    }
+});
+
+// API endpoint to delete all downloads
+app.MapDelete("/api/downloads", () =>
+{
+    try
+    {
+        var files = Directory.GetFiles(downloadsPath);
+        foreach (var file in files)
+        {
+            if (File.Exists(file))
+                File.Delete(file);
+        }
         return Results.Ok();
     }
     catch

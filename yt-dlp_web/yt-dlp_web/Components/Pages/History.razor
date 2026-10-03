@@ -2,58 +2,227 @@
 @rendermode InteractiveServer
 @inject HttpClient Http
 @inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
 
-<PageTitle>yt-dlp_web | History</PageTitle>
+<PageTitle>YT-DLP Web | History</PageTitle>
 
-<h1>Download History</h1>
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+    <div>
+        <h1 class="h2 mb-1 fw-bold">Download History</h1>
+        <p class="text-secondary mb-0">Browse, play, and manage previously downloaded media files.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-secondary btn-sm" @onclick="RefreshList" disabled="@isLoading">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="@(isLoading ? "spinner-border spinner-border-sm" : "")">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>Refresh</span>
+        </button>
 
-<button class="btn btn-sm btn-secondary mb-3" @onclick="RefreshList">Refresh</button>
+        <button class="btn btn-sm btn-ghost text-danger" @onclick="DeleteAll" disabled="@(downloads.Count == 0 || isLoading)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Delete All</span>
+        </button>
+    </div>
+</div>
 
 @if (isLoading)
 {
-    <p>Loading downloads...</p>
+    <div class="modern-card p-5 text-center">
+        <div class="spinner-border text-danger mb-3" role="status"></div>
+        <p class="text-secondary mb-0">Loading downloaded files...</p>
+    </div>
 }
 else if (downloads.Count == 0)
 {
-    <p class="text-muted">No downloads yet.</p>
+    <div class="modern-card p-5 text-center">
+        <div style="width: 64px; height: 64px; background: var(--bg-card-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; color: var(--text-muted);">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+        </div>
+        <h5 class="fw-bold mb-1">No Downloads Yet</h5>
+        <p class="text-secondary mb-3">Videos you download will be archived here for easy preview and downloading.</p>
+        <a href="" class="btn btn-youtube">
+            <span>Download a Video</span>
+        </a>
+    </div>
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>File</th>
-                    <th>Size</th>
-                    <th>Modified</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var file in downloads)
-                {
+    <div class="modern-card overflow-hidden">
+        <div class="table-responsive">
+            <table class="modern-table">
+                <thead>
                     <tr>
-                        <td>@file.Name</td>
-                        <td>@FormatFileSize(file.Size)</td>
-                        <td>@file.Modified.ToString("g")</td>
-                        <td>
-                            <a href="@file.DownloadUrl" class="btn btn-sm btn-primary" download>Download</a>
-                            <button class="btn btn-sm btn-danger" @onclick="() => DeleteFile(file.Name)">Delete</button>
-                        </td>
+                        <th>File</th>
+                        <th>Size</th>
+                        <th>Date Modified</th>
+                        <th class="text-end">Actions</th>
                     </tr>
-                }
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach (var file in downloads)
+                    {
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (IsAudioFile(file.Name))
+                                    {
+                                        <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(168, 85, 247, 0.15); color: #a855f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Audio File">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M9 18V5l12-2v13"></path>
+                                                <circle cx="6" cy="18" r="3"></circle>
+                                                <circle cx="18" cy="16" r="3"></circle>
+                                            </svg>
+                                        </div>
+                                    }
+                                    else if (IsImageFile(file.Name))
+                                    {
+                                        <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); color: #10b981; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Thumbnail Image">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                                <polyline points="21 15 16 10 5 21"></polyline>
+                                            </svg>
+                                        </div>
+                                    }
+                                    else if (IsSubtitleFile(file.Name))
+                                    {
+                                        <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(234, 179, 8, 0.15); color: #eab308; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Subtitles">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="2" y="4" width="20" height="16" rx="3"></rect>
+                                                <path d="M7 15h3"></path>
+                                                <path d="M14 15h3"></path>
+                                                <path d="M7 11h10"></path>
+                                            </svg>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--accent-red-light); color: var(--accent-red); display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Video File">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                            </svg>
+                                        </div>
+                                    }
+                                    <div class="overflow-hidden">
+                                        <div class="fw-semibold text-truncate" style="max-width: 420px;" title="@file.Name">@file.Name</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge rounded-pill" style="background-color: var(--bg-card-secondary); color: var(--text-main); border: 1px solid var(--border-color); font-family: ui-monospace, monospace;">
+                                    @FormatFileSize(file.Size)
+                                </span>
+                            </td>
+                            <td class="text-secondary small">
+                                @file.Modified.ToString("MMM d, yyyy h:mm tt")
+                            </td>
+                            <td class="text-end">
+                                <div class="d-inline-flex align-items-center gap-1">
+                                    @if (IsPlayableMedia(file.Name))
+                                    {
+                                        <button class="btn btn-sm btn-secondary" @onclick="() => PlayMedia(file)" title="Preview Media">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                            </svg>
+                                            <span>Play</span>
+                                        </button>
+                                    }
+
+                                    <a href="@file.DownloadUrl" class="btn btn-sm btn-ghost" title="Save File" download>
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                            <polyline points="7 10 12 15 17 10"></polyline>
+                                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                                        </svg>
+                                    </a>
+
+                                    <button class="btn btn-sm btn-ghost text-danger" @onclick="() => DeleteFile(file.Name)" title="Delete File">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 }
+
+<!-- Media Player Modal -->
+<MediaPlayerModal IsOpen="isPlayerOpen"
+                  Title="@activeFile?.Name"
+                  MediaUrl="@activeMediaUrl"
+                  DownloadUrl="@activeDownloadUrl"
+                  OnClose="ClosePlayer" />
 
 @code {
     private List<DownloadFile> downloads = new();
     private bool isLoading = true;
 
+    // Player state
+    private bool isPlayerOpen;
+    private DownloadFile? activeFile;
+    private string? activeMediaUrl;
+    private string? activeDownloadUrl;
+
     protected override async Task OnInitializedAsync()
     {
         await RefreshList();
+    }
+
+    private void PlayMedia(DownloadFile file)
+    {
+        activeFile = file;
+        activeMediaUrl = $"downloads/{Uri.EscapeDataString(file.Name)}";
+        activeDownloadUrl = file.DownloadUrl;
+        isPlayerOpen = true;
+    }
+
+    private void ClosePlayer()
+    {
+        isPlayerOpen = false;
+        activeFile = null;
+        activeMediaUrl = null;
+        activeDownloadUrl = null;
+    }
+
+    private bool IsAudioFile(string name)
+    {
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext is ".mp3" or ".m4a" or ".aac" or ".wav" or ".flac" or ".ogg" or ".opus";
+    }
+
+    private bool IsImageFile(string name)
+    {
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp";
+    }
+
+    private bool IsSubtitleFile(string name)
+    {
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext is ".vtt" or ".srt" or ".ass" or ".ssa" or ".sub" or ".lrc";
+    }
+
+    private bool IsPlayableMedia(string name)
+    {
+        if (IsAudioFile(name)) return true;
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext is ".mp4" or ".webm" or ".mkv" or ".mov" or ".avi" or ".flv" or ".m4v";
     }
 
     private async Task RefreshList()
@@ -97,6 +266,25 @@ else
         }
     }
 
+    private async Task DeleteAll()
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete all downloaded files?"))
+            return;
+
+        try
+        {
+            var resp = await Http.DeleteAsync("api/downloads");
+            if (resp.IsSuccessStatusCode)
+            {
+                await RefreshList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting all files: {ex.Message}");
+        }
+    }
+
     private async Task<bool> ConfirmDelete(string fileName)
     {
         return await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete {fileName}?");
@@ -114,8 +302,6 @@ else
         }
         return $"{len:0.##} {sizes[order]}";
     }
-
-    @inject IJSRuntime JSRuntime
 
     private class DownloadFile
     {

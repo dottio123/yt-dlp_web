@@ -1,30 +1,122 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">yt-dlp_web</a>
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+
+<div class="sidebar-header d-flex align-items-center justify-content-between">
+    <a class="brand-link d-flex align-items-center gap-2" href="">
+        <div class="brand-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        </div>
+        <span class="brand-title">YT-DLP <span class="brand-badge">WEB</span></span>
+    </a>
+    <button class="mobile-toggle d-md-none" @onclick="ToggleNavMenu" aria-label="Toggle navigation">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    </button>
+</div>
+
+<div class="sidebar-collapse @(collapseNavMenu ? "collapse" : "")" @onclick="CollapseNavMenu">
+    <nav class="nav-links flex-column">
+        <NavLink class="nav-item-link" href="" Match="NavLinkMatch.All">
+            <div class="nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+            </div>
+            <span>Download</span>
+        </NavLink>
+
+        <NavLink class="nav-item-link" href="history">
+            <div class="nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+            </div>
+            <span>History</span>
+        </NavLink>
+
+        <NavLink class="nav-item-link" href="logs">
+            <div class="nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 17 10 11 4 5"></polyline>
+                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                </svg>
+            </div>
+            <span>Logs</span>
+        </NavLink>
+    </nav>
+
+    <div class="sidebar-footer">
+        <button class="nav-utility-btn" @onclick="ToggleTheme" title="Toggle Light / Dark theme">
+            @if (currentTheme == "light")
+            {
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+                <span>Dark Mode</span>
+            }
+            else
+            {
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <span>Light Mode</span>
+            }
+        </button>
+
+        <AboutModal />
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+@code {
+    private bool collapseNavMenu = true;
+    private string currentTheme = "dark";
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Download
-            </NavLink>
-        </div>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                currentTheme = await JS.InvokeAsync<string>("ytTheme.getTheme");
+                StateHasChanged();
+            }
+            catch { }
+        }
+    }
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="history">
-                <span class="bi bi-clock-history-nav-menu" aria-hidden="true"></span> History
-            </NavLink>
-        </div>
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="logs">
-                <span class="bi bi-file-text-nav-menu" aria-hidden="true"></span> Logs
-            </NavLink>
-        </div>
-    </nav>
-</div>
+    private void CollapseNavMenu()
+    {
+        collapseNavMenu = true;
+    }
 
+    private async Task ToggleTheme()
+    {
+        try
+        {
+            currentTheme = await JS.InvokeAsync<string>("ytTheme.toggleTheme");
+            StateHasChanged();
+        }
+        catch { }
+    }
+}

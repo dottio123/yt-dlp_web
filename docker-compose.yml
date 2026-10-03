@@ -1,0 +1,26 @@
+services:
+  yt-dlp-web:
+    container_name: yt-dlp-web
+    build:
+      context: .
+      dockerfile: yt-dlp_web/yt-dlp_web/Dockerfile
+    image: yt-dlp-web:latest
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - UPDATE_YTDLP=1
+      - YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+    ports:
+      # Map host port 7022 to the container's HTTP port (the app is listening on 8080 inside the container)
+      - "7022:8080"
+    networks:
+      - yt-net
+    volumes:
+      - ./config:/app/config
+
+networks:
+  yt-net:
+    driver: bridge
+
+volumes:
+  yt-dlp-web_data:
+    name: yt-dlp-web_data

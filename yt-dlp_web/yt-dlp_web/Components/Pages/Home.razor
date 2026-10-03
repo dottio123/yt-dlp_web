@@ -7,150 +7,374 @@
 @inject NavigationManager Nav
 @inject IClientInfoService ClientInfo
 
-<PageTitle>yt-dlp_web | Download</PageTitle>
+<PageTitle>YT-DLP Web | Download</PageTitle>
 
-<h1>Download a video</h1>
-
-<div class="mb-3">
-    <label class="form-label">Video URL</label>
-    <input class="form-control" @bind="videoUrl" placeholder="https://..." />
-    <div class="form-text">Paste the video link and click Download. The server will run yt-dlp and return a link when
-        finished.</div>
+<div class="mb-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <h1 class="h2 mb-0 fw-bold">Download Video & Audio</h1>
+        <span class="badge rounded-pill" style="background-color: var(--accent-red-light); color: var(--accent-red); border: 1px solid rgba(255, 0, 51, 0.2); font-weight: 600; padding: 0.4rem 0.85rem;">
+            Powered by yt-dlp
+        </span>
+    </div>
+    <p class="text-secondary mb-0">Paste any supported video or media link to stream and download directly to your server.</p>
 </div>
 
-<div class="mb-3">
-    <button class="btn btn-primary" @onclick="StartDownload" disabled="@(isBusy || isUpdating)">Download</button>
-    <button class="btn btn-secondary" @onclick="ManualUpdate" disabled="@(isBusy || isUpdating)">
-        @if (isUpdating)
-        {
-            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-        }
-        Update yt-dlp.exe
-    </button>
-</div>
+<!-- Main Input Card -->
+<div class="modern-card p-4 mb-4">
+    <div class="mb-3">
+        <label class="form-label small fw-semibold text-secondary text-uppercase mb-2" style="letter-spacing: 0.05em;">Video or Media URL</label>
+        <div class="input-group">
+            <span class="input-group-text" style="background-color: var(--bg-input); border-color: var(--border-color); color: var(--text-muted);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+            </span>
+            <input class="form-control" @bind="videoUrl" @bind:event="oninput" placeholder="https://www.youtube.com/watch?v=..." disabled="@(isBusy || isUpdating)" />
+            @if (!string.IsNullOrEmpty(videoUrl) && !isBusy && !isUpdating)
+            {
+                <button class="btn btn-ghost" type="button" @onclick="() => videoUrl = string.Empty" title="Clear">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            }
+        </div>
+    </div>
 
-<div class="card mb-3">
-    <div class="card-header">
-        <button class="btn btn-sm btn-outline-secondary" @onclick="toggleOptions" type="button">
-            @(showOptions ? "▼ Download Options" : "▶ Download Options")
+    <!-- Actions & Options Toggle -->
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-youtube" @onclick="StartDownload" disabled="@(isBusy || isUpdating || string.IsNullOrWhiteSpace(videoUrl))">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Download</span>
+            </button>
+
+            <button class="btn btn-secondary" @onclick="ManualUpdate" disabled="@(isBusy || isUpdating)">
+                @if (isUpdating)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <span>Updating...</span>
+                }
+                else
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                    </svg>
+                    <span>Update yt-dlp</span>
+                }
+            </button>
+        </div>
+
+        <button class="btn btn-ghost d-flex align-items-center gap-2" @onclick="toggleOptions" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform: rotate(@(showOptions ? "90deg" : "0deg")); transition: transform 0.2s ease;">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+            <span>@(showOptions ? "Hide Options" : "Download Options")</span>
         </button>
     </div>
+
+    <!-- Collapsible Options -->
     @if (showOptions)
     {
-       <div class="card-body">
-          <!-- <div class="mb-3">
-               <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="extractAudio" @bind="extractAudio" />
-                    <label class="form-check-label" for="extractAudio">
-                        Extract Audio Only
-                    </label>
-                </div> 
-            </div> -->
+        <div class="modern-card-inner p-3 mt-3">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="extractAudio" @bind="extractAudio" />
+                        <label class="form-check-label" for="extractAudio">
+                            Extract Audio Only
+                        </label>
+                    </div>
 
-            @if (extractAudio)
-            {
-                <div class="mb-3">
-                    <label class="form-label">Audio Format</label>
-                    <select class="form-select" @bind="audioFormat">
-                        <option value="mp3">MP3</option>
-                        <option value="m4a">M4A</option>
-                        <option value="aac">AAC</option>
-                    </select>
+                    @if (extractAudio)
+                    {
+                        <div class="mt-2 ms-4">
+                            <label class="form-label small text-muted mb-1">Audio Format</label>
+                            <select class="form-select form-select-sm" @bind="audioFormat">
+                                <option value="mp3">MP3</option>
+                                <option value="m4a">M4A</option>
+                                <option value="aac">AAC</option>
+                            </select>
+                        </div>
+                    }
                 </div>
-            }
 
-            <div class="mb-3">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="downloadSubs" @bind="downloadSubs" />
-                    <label class="form-check-label" for="downloadSubs">
-                        Download Subtitles
-                    </label>
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="downloadSubs" @bind="downloadSubs" />
+                        <label class="form-check-label" for="downloadSubs">
+                            Download Subtitles
+                        </label>
+                    </div>
+
+                    @if (downloadSubs)
+                    {
+                        <div class="mt-2 ms-4">
+                            <label class="form-label small text-muted mb-1">Subtitle Languages</label>
+                            <select class="form-select form-select-sm" @bind="subLangs">
+                                <option value="en">English Only</option>
+                                <option value="all">All Available</option>
+                            </select>
+                        </div>
+                    }
                 </div>
-            </div> 
 
-            @if (downloadSubs)
-            {
-                <div class="mb-3">
-                    <label class="form-label">Subtitle Languages</label>
-                    <select class="form-select" @bind="subLangs">
-                        <option value="en">English Only</option>
-                        <option value="all">All Available</option>
-                    </select>
-                </div>
-            }
-
-            <div class="mb-3">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="includeThumbnail" @bind="includeThumbnail" />
-                    <label class="form-check-label" for="includeThumbnail">
-                        Download Thumbnail
-                    </label>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="includeThumbnail" @bind="includeThumbnail" />
+                        <label class="form-check-label" for="includeThumbnail">
+                            Download Thumbnail Image
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>
     }
 </div>
 
+<!-- Real-Time Progress Component -->
 @if (isBusy)
 {
-    <p class="mt-2">Downloading... Please wait.</p>
+    <div class="progress-card mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <div class="stage-badge">
+                    <div class="stage-badge-dot"></div>
+                    <span>@(currentProgress.StatusMessage)</span>
+                </div>
+            </div>
+            <div class="d-flex align-items-baseline gap-1">
+                @if (!currentProgress.IsIndeterminate || currentProgress.Percent > 0)
+                {
+                    <span class="h3 fw-bold mb-0" style="color: var(--accent-red); font-family: ui-monospace, monospace;">@($"{currentProgress.Percent:F1}%")</span>
+                }
+                else
+                {
+                    <span class="spinner-border spinner-border-sm text-danger me-1" role="status"></span>
+                    <span class="small text-muted fw-semibold">Processing...</span>
+                }
+            </div>
+        </div>
+
+        <div class="progress-track mb-3">
+            <div class="progress-bar-red @(currentProgress.IsIndeterminate && currentProgress.Percent == 0 ? "progress-indeterminate" : "")"
+                 style="@(currentProgress.IsIndeterminate && currentProgress.Percent == 0 ? "" : $"width: {Math.Clamp(currentProgress.Percent, 2.0, 100.0)}%;")">
+            </div>
+        </div>
+
+        <!-- Real-Time Stat Chips -->
+        <div class="stat-chips-grid">
+            <div class="stat-chip">
+                <span class="stat-chip-label">⚡ Speed</span>
+                <span class="stat-chip-value">@(string.IsNullOrEmpty(currentProgress.Speed) ? "--" : currentProgress.Speed)</span>
+            </div>
+            <div class="stat-chip">
+                <span class="stat-chip-label">⏳ ETA</span>
+                <span class="stat-chip-value">@(string.IsNullOrEmpty(currentProgress.Eta) ? "--" : currentProgress.Eta)</span>
+            </div>
+            <div class="stat-chip">
+                <span class="stat-chip-label">📦 Transferred</span>
+                <span class="stat-chip-value">
+                    @if (!string.IsNullOrEmpty(currentProgress.DownloadedSize) && !string.IsNullOrEmpty(currentProgress.TotalSize))
+                    {
+                        <span>@currentProgress.DownloadedSize / @currentProgress.TotalSize</span>
+                    }
+                    else if (!string.IsNullOrEmpty(currentProgress.TotalSize))
+                    {
+                        <span>@currentProgress.TotalSize</span>
+                    }
+                    else
+                    {
+                        <span>--</span>
+                    }
+                </span>
+            </div>
+        </div>
+    </div>
 }
 
-@if (isUpdating)
-{
-    <p class="mt-2">Updating yt-dlp... Please wait.</p>
-}
-
-@if (!string.IsNullOrEmpty(error))
-{
-    <div class="alert alert-danger mt-2">@error</div>
-}
-
+<!-- Update Notification Banner -->
 @if (!string.IsNullOrEmpty(updateMessage))
 {
-    <div class="alert alert-success mt-2">@updateMessage</div>
+    <div class="modern-card p-3 mb-4 d-flex align-items-center gap-3" style="border-left: 4px solid #10b981;">
+        <div style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        </div>
+        <div class="flex-grow-1">
+            <div class="fw-semibold text-main">@updateMessage</div>
+        </div>
+        <button class="btn btn-sm btn-ghost p-1" @onclick="() => updateMessage = null">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
 }
 
+<!-- Inline Error Card -->
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="modern-card p-4 mb-4" style="border-color: rgba(255, 0, 51, 0.35); background-color: rgba(255, 0, 51, 0.04);">
+        <div class="d-flex align-items-start gap-3">
+            <div style="background: var(--accent-red); color: white; border-radius: 10px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+            </div>
+            <div class="flex-grow-1">
+                <h5 class="fw-bold mb-1" style="color: var(--accent-red);">Download Failed</h5>
+                <p class="text-secondary small mb-3" style="white-space: pre-wrap; font-family: ui-monospace, monospace;">@error</p>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-youtube" @onclick="StartDownload">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        <span>Retry Download</span>
+                    </button>
+                    <a href="logs" class="btn btn-sm btn-secondary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 17 10 11 4 5"></polyline>
+                            <line x1="12" y1="19" x2="20" y2="19"></line>
+                        </svg>
+                        <span>View System Logs</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modern Media Result Card with Embedded Video Player -->
 @if (!string.IsNullOrEmpty(resultUrl))
 {
-    <div class="alert alert-success mt-2">
-        <ul class="mb-0 list-unstyled">
-            <li>Download ready: <a href="@resultFullUrl" target="_blank">@fileName</a></li>
+    <div class="modern-card p-4 mb-4" style="border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 10px 30px -5px rgba(16, 185, 129, 0.15);">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill bg-success px-3 py-2 fw-bold d-inline-flex align-items-center gap-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Download Complete
+                </span>
+            </div>
+            <button class="btn btn-sm btn-ghost" @onclick="ResetForm" title="Download another video">
+                <span>✕ Close / New</span>
+            </button>
+        </div>
+
+        <h5 class="fw-bold mb-3 text-truncate" title="@fileName">@fileName</h5>
+
+        <!-- Embedded Video / Audio Player Preview -->
+        <div class="media-player-wrapper mb-3">
+            @if (IsCurrentResultAudio)
+            {
+                <div class="p-4 text-center">
+                    <div class="mb-3">
+                        <div style="width: 64px; height: 64px; margin: 0 auto; background: var(--accent-red-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--accent-red);">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18V5l12-2v13"></path>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <circle cx="18" cy="16" r="3"></circle>
+                            </svg>
+                        </div>
+                    </div>
+                    <audio controls src="@resultUrl" style="width: 100%; max-width: 500px;">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+            }
+            else
+            {
+                <video controls playsinline preload="metadata" src="@resultUrl">
+                    @if (resultSubtitles.Count > 0)
+                    {
+                        <track src="@resultSubtitles[0].url" kind="subtitles" srclang="en" label="English" default />
+                    }
+                    Your browser does not support the video element.
+                </video>
+            }
+        </div>
+
+        <!-- Result Action Buttons -->
+        <div class="d-flex align-items-center flex-wrap gap-2 pt-2 border-top" style="border-color: var(--border-color) !important;">
+            <a href="@resultFullUrl" class="btn btn-youtube" download>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Save File</span>
+            </a>
+
             @if (!string.IsNullOrEmpty(thumbFullUrl))
             {
-                <li>Thumbnail ready: <a href="@thumbFullUrl" target="_blank">@thumbFileName</a></li>
+                <a href="@thumbFullUrl" class="btn btn-secondary" target="_blank" download>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    <span>Thumbnail</span>
+                </a>
             }
+
             @if (resultSubtitles.Count > 0)
             {
                 @foreach (var sub in resultSubtitles)
                 {
-                    <li>Subtitle ready: <a href="@sub.url" target="_blank">@sub.file</a></li>
+                    <a href="@sub.url" class="btn btn-secondary" target="_blank" download>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        <span>Subtitle (@sub.file)</span>
+                    </a>
                 }
             }
-        </ul>
+
+            <button class="btn btn-ghost ms-auto" @onclick="ResetForm">
+                <span>Download Another</span>
+            </button>
+        </div>
     </div>
 }
 
-<hr class="my-4" />
-
-<div class="alert alert-info">
-    <h5>About the Update Button</h5>
-    <p class="mb-2">
-        YouTube actively works to prevent video downloads. If downloads stop working, it's often because YouTube has
-        updated their anti-scraping measures.
-        Clicking <strong>Update yt-dlp.exe</strong> will fetch the latest version, which typically includes fixes for
-        these protections.
-    </p>
-    <p class="text-muted mb-0">
-        Updates are automatically checked daily at midnight. You can also manually trigger an update using the button
-        above.
-    </p>
+<!-- Info Callout Card -->
+<div class="modern-card p-3 mb-4" style="background-color: var(--bg-card-secondary);">
+    <div class="d-flex align-items-start gap-3">
+        <div style="background: var(--accent-red-light); color: var(--accent-red); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+        </div>
+        <div class="small">
+            <strong class="text-main d-block mb-1">About yt-dlp Updates</strong>
+            <span class="text-secondary">
+                YouTube frequently updates its anti-scraping mechanisms. If downloads encounter issues, click <strong>Update yt-dlp</strong> to fetch the latest binary patches. Automatic checks also run daily at midnight.
+            </span>
+        </div>
+    </div>
 </div>
 
-<div class="mt-3 text-center">
+<div class="text-center">
     <small class="text-muted">
-        Learn more about yt-dlp: <a href="https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#usage-and-options"
-            target="_blank" rel="noopener noreferrer">yt-dlp on GitHub</a>
+        Learn more about options and supported sites:
+        <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener noreferrer">yt-dlp Documentation ↗</a>
     </small>
 </div>
 
@@ -174,9 +398,35 @@
     private string subLangs = "en";
     private bool includeThumbnail;
 
+    private DownloadProgressUpdate currentProgress = new();
+
+    private bool IsCurrentResultAudio
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(fileName)) return extractAudio;
+            var ext = Path.GetExtension(fileName).ToLowerInvariant();
+            return ext is ".mp3" or ".m4a" or ".aac" or ".wav" or ".ogg" or ".flac";
+        }
+    }
+
     private void toggleOptions()
     {
         showOptions = !showOptions;
+    }
+
+    private void ResetForm()
+    {
+        videoUrl = string.Empty;
+        error = null;
+        fileName = null;
+        resultUrl = null;
+        resultFullUrl = null;
+        thumbUrl = null;
+        thumbFileName = null;
+        thumbFullUrl = null;
+        resultSubtitles.Clear();
+        currentProgress = new();
     }
 
     private async Task StartDownload()
@@ -193,11 +443,18 @@
 
         if (string.IsNullOrWhiteSpace(videoUrl))
         {
-            error = "Please enter a video URL.";
+            error = "Please enter a video or media URL.";
             return;
         }
 
         isBusy = true;
+        currentProgress = new DownloadProgressUpdate
+        {
+            Percent = 0,
+            StatusMessage = "Starting yt-dlp engine...",
+            IsIndeterminate = true
+        };
+
         try
         {
             var req = new DownloadRequest
@@ -211,7 +468,14 @@
                 IncludeThumbnail = includeThumbnail
             };
 
-            var result = await DownloadService.DownloadAsync(req);
+            var result = await DownloadService.DownloadAsync(req, progress =>
+            {
+                _ = InvokeAsync(() =>
+                {
+                    currentProgress = progress;
+                    StateHasChanged();
+                });
+            });
 
             if (!result.Success)
             {
@@ -220,15 +484,14 @@
             }
 
             resultUrl = result.Url;
-            fileName = result.File ?? Path.GetFileName(result.Url);
-            // Make absolute URL for the download link
-            resultFullUrl = Nav.ToAbsoluteUri($"download/{Uri.EscapeDataString(fileName)}").ToString();
+            fileName = result.File ?? (result.Url != null ? Path.GetFileName(result.Url) : "download");
+            resultFullUrl = Nav.ToAbsoluteUri($"download/{Uri.EscapeDataString(fileName ?? "download")}").ToString();
 
             if (!string.IsNullOrEmpty(result.ThumbnailUrl))
             {
                 thumbUrl = result.ThumbnailUrl;
                 thumbFileName = result.ThumbnailFile ?? Path.GetFileName(result.ThumbnailUrl);
-                thumbFullUrl = Nav.ToAbsoluteUri($"download/{Uri.EscapeDataString(thumbFileName)}").ToString();
+                thumbFullUrl = Nav.ToAbsoluteUri($"download/{Uri.EscapeDataString(thumbFileName ?? "thumbnail")}").ToString();
             }
 
             foreach (var sub in result.Subtitles)
@@ -268,11 +531,11 @@
                 {
                     if (content.AlreadyLatest)
                     {
-                        updateMessage = "✓ Already at latest version";
+                        updateMessage = "Already at the latest yt-dlp version.";
                     }
                     else
                     {
-                        updateMessage = "✓ Update successful";
+                        updateMessage = "yt-dlp updated successfully.";
                     }
                 }
                 else

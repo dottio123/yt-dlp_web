@@ -1,0 +1,131 @@
+@rendermode InteractiveServer
+
+<button class="nav-utility-btn" @onclick="ShowAbout" title="About & Changelog">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
+    <span>About & Changelog</span>
+</button>
+
+@if (showAboutModal)
+{
+    <div class="modal-backdrop-custom" @onclick="HideAbout">
+        <div class="modal-content-custom p-4" style="max-width: 620px;" @onclick:stopPropagation>
+            <div class="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div style="background: var(--accent-red); width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: white;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                    </div>
+                    <h5 class="mb-0 fw-bold">YT-DLP Web</h5>
+                </div>
+                <button type="button" class="btn btn-sm btn-ghost p-1" @onclick="HideAbout" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <button class="btn btn-sm @(activeTab == "overview" ? "btn-youtube" : "btn-secondary")" @onclick="@(() => activeTab = "overview")">
+                    Overview
+                </button>
+                <button class="btn btn-sm @(activeTab == "changelog" ? "btn-youtube" : "btn-secondary")" @onclick="@(() => activeTab = "changelog")">
+                    Changelog
+                    <span class="badge rounded-pill bg-danger ms-1" style="font-size: 0.65rem;">v1.2</span>
+                </button>
+            </div>
+
+            <div class="modal-body p-0" style="max-height: 420px; overflow-y: auto;">
+                @if (activeTab == "overview")
+                {
+                    <p class="text-secondary mb-3">
+                        This application is a <strong style="color: var(--text-main);">vibe-coded</strong> experiment testing the capabilities of AI to build full-featured media tools autonomously.
+                    </p>
+                    <div class="modern-card-inner p-3 mb-3">
+                        <div class="small text-muted mb-1 text-uppercase fw-semibold" style="letter-spacing: 0.05em;">Core Engine</div>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span class="fw-semibold">yt-dlp</span>
+                            <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" class="small fw-semibold">GitHub Repository ↗</a>
+                        </div>
+                    </div>
+                    <div class="modern-card-inner p-3 mb-3">
+                        <div class="small text-muted mb-1 text-uppercase fw-semibold" style="letter-spacing: 0.05em;">Tech Stack</div>
+                        <div class="small text-secondary">
+                            ASP.NET Core 8 & Blazor Interactive Server, Docker containerization, and Caddy reverse proxy.
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <!-- Changelog Timeline -->
+                    <div class="d-flex flex-column gap-3">
+                        <!-- v1.2.0 -->
+                        <div class="modern-card-inner p-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="badge bg-danger rounded-pill px-2 py-1 fw-bold">v1.2.0</span>
+                                <small class="text-muted">Latest Release</small>
+                            </div>
+                            <h6 class="fw-bold mb-2">Real-Time Progress & Media Preview Player</h6>
+                            <ul class="small text-secondary mb-0 ps-3">
+                                <li><strong>Real-Time Progress Card:</strong> Live glowing progress bar with percentage, speed, ETA, and byte tracking.</li>
+                                <li><strong>Smooth Stats:</strong> Throttled and smoothed Speed and ETA updates for easy readability.</li>
+                                <li><strong>In-App Media Player:</strong> Preview downloaded video and audio files directly on Home and via modal in History.</li>
+                                <li><strong>Modern Dark & Light Themes:</strong> YouTube-red accents with persistent theme memory across all pages.</li>
+                                <li><strong>Refined Layout:</strong> Modern responsive sidebar, brand badges, and updated SVG icons.</li>
+                            </ul>
+                        </div>
+
+                        <!-- v1.1.0 -->
+                        <div class="modern-card-inner p-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="badge bg-secondary rounded-pill px-2 py-1 fw-bold">v1.1.0</span>
+                                <small class="text-muted">Previous</small>
+                            </div>
+                            <h6 class="fw-bold mb-2">History & Diagnostics</h6>
+                            <ul class="small text-secondary mb-0 ps-3">
+                                <li><strong>Download History:</strong> Archive of past downloads with file size and timestamp sorting.</li>
+                                <li><strong>System Logs Viewer:</strong> Filterable diagnostic trail for downloads, updates, and engine errors.</li>
+                            </ul>
+                        </div>
+
+                        <!-- v1.0.0 -->
+                        <div class="modern-card-inner p-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="badge bg-secondary rounded-pill px-2 py-1 fw-bold">v1.0.0</span>
+                                <small class="text-muted">Initial</small>
+                            </div>
+                            <h6 class="fw-bold mb-2">Autonomous Foundation</h6>
+                            <ul class="small text-secondary mb-0 ps-3">
+                                <li>Full-stack containerized web interface for yt-dlp.</li>
+                                <li>Automated daily updates and manual engine upgrade trigger.</li>
+                            </ul>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="d-flex justify-content-end mt-3 pt-2 border-top" style="border-color: var(--border-color) !important;">
+                <button type="button" class="btn btn-youtube" @onclick="HideAbout">Got it</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool showAboutModal = false;
+    private string activeTab = "overview";
+
+    private void ShowAbout()
+    {
+        showAboutModal = true;
+        activeTab = "overview";
+    }
+
+    private void HideAbout() => showAboutModal = false;
+}

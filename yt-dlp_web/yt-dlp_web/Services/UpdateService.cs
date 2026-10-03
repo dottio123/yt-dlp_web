@@ -68,12 +68,12 @@ public class UpdateService : BackgroundService, IUpdateService
     {
         try
         {
-            var ytDlpPath = Path.Combine(AppContext.BaseDirectory, "tools", "yt-dlp.exe");
+            var ytDlpPath = "/usr/local/bin/yt-dlp";
 
             if (!File.Exists(ytDlpPath))
             {
-                _logger.LogUpdate($"yt-dlp.exe not found at {ytDlpPath}", false);
-                return new UpdateResult { Success = false, Message = $"yt-dlp.exe not found at {ytDlpPath}" };
+                _logger.LogUpdate($"yt-dlp not found at {ytDlpPath}", false);
+                return new UpdateResult { Success = false, Message = $"yt-dlp not found at {ytDlpPath}" };
             }
 
             _log.LogInformation("Starting yt-dlp update...");

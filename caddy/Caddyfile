@@ -1,0 +1,13 @@
+# Caddyfile for yt-dlp_web
+# Replace example.com with your domain or IP/hostname for production
+
+:80 {
+	# Serve static site
+	root * /srv/site
+	encode gzip
+	file_server
+
+	# Proxy API and download endpoints to the yt-dlp-web service
+	reverse_proxy /api/* yt-dlp-web:80
+	reverse_proxy /download/* yt-dlp-web:80
+}
