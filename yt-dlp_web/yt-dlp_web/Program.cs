@@ -14,15 +14,6 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents();
 
-builder.Services.AddScoped(sp =>
-{
-    var navManager = sp.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
-    var isDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true";
-    // For server-side rendering in Docker, use internal loopback as the external base URI may be inaccessible from inside.
-    var baseAddress = isDocker ? "http://localhost:8080/" : navManager.BaseUri;
-    return new HttpClient { BaseAddress = new Uri(baseAddress) };
-});
-
 builder.Services.AddHttpContextAccessor();
 
 // Configure logging service — persist logs in the mounted config volume
