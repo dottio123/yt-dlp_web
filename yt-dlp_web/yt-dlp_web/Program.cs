@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.DataProtection;
 using yt_dlp_web.Client.Pages;
@@ -51,6 +52,10 @@ builder.Services.AddSingleton<DownloadLimiter>();
 
 // Register download service
 builder.Services.AddScoped<IDownloadService, DownloadService>();
+
+// Register circuit connection tracker for browser tab disconnect handling
+builder.Services.AddScoped<CircuitConnectionTracker>();
+builder.Services.AddScoped<CircuitHandler>(sp => sp.GetRequiredService<CircuitConnectionTracker>());
 
 // Register update service as both hosted service and injectable interface
 builder.Services.AddSingleton<IUpdateService, UpdateService>(sp =>

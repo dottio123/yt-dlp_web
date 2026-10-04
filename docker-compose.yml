@@ -13,6 +13,8 @@ services:
       - YtDlp__MaxConcurrentDownloads=${MAX_CONCURRENT_DOWNLOADS:-4}
       # Kill a download that runs longer than this many minutes.
       - YtDlp__TimeoutMinutes=${DOWNLOAD_TIMEOUT_MINUTES:-180}
+      # Cancel an active download after a browser tab disconnects for longer than this many seconds.
+      - YtDlp__DisconnectGraceSeconds=${DISCONNECT_GRACE_SECONDS:-30}
     ports:
       # Map host port 7022 to the container's HTTP port (the app is listening on 8080 inside the container)
       - "7022:8080"

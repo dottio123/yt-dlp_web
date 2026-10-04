@@ -7,6 +7,7 @@
 @inject HttpClient Http
 @inject NavigationManager Nav
 @inject IClientInfoService ClientInfo
+@inject CircuitConnectionTracker ConnectionTracker
 
 <PageTitle>YT-DLP Web | Download</PageTitle>
 
@@ -468,7 +469,7 @@
         }
 
         isBusy = true;
-        downloadCts = new CancellationTokenSource();
+        downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ConnectionTracker.DisconnectedToken);
         currentProgress = new DownloadProgressUpdate
         {
             Percent = 0,
