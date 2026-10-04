@@ -449,10 +449,10 @@ These are the inputs most likely to hurt real users that the code paths above co
 **Files:**
 - Modify: `Services/DownloadService.cs` (`DownloadRequest.ClientIp`), `Program.cs` (`/api/download`)
 
-- [ ] **Step 1:** Add `[System.Text.Json.Serialization.JsonIgnore]` to `DownloadRequest.ClientIp`. Home still sets it in-process.
-- [ ] **Step 2:** In `/api/download`, inject `IClientInfoService clientInfo` and set `req.ClientIp = clientInfo.GetClientIp();` before calling the service.
-- [ ] **Step 3: Verify (Docker).** `curl -s -X POST localhost:7022/api/download -H 'Content-Type: application/json' -d '{"url":"https://example.invalid/x","clientIp":"6.6.6.6"}'`. The Logs page shows the error with the real caller IP, not `6.6.6.6`.
-- [ ] **Step 4:** Commit: `fix: derive client IP server-side for /api/download`
+- [x] **Step 1:** Add `[System.Text.Json.Serialization.JsonIgnore]` to `DownloadRequest.ClientIp`. Home still sets it in-process.
+- [x] **Step 2:** In `/api/download`, inject `IClientInfoService clientInfo` and set `req.ClientIp = clientInfo.GetClientIp();` before calling the service.
+- [x] **Step 3: Verify (Docker).** `curl -s -X POST localhost:7022/api/download -H 'Content-Type: application/json' -d '{"url":"https://example.invalid/x","clientIp":"6.6.6.6"}'`. The Logs page shows the error with the real caller IP, not `6.6.6.6`.
+- [x] **Step 4:** Commit: `fix: derive client IP server-side for /api/download`
 
 ---
 

@@ -19,6 +19,7 @@ public class DownloadRequest
 {
     public string? Url { get; set; }
     public string? Format { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
     public string? ClientIp { get; set; }
     public bool ExtractAudio { get; set; }
     public string? AudioFormat { get; set; }

@@ -111,8 +111,9 @@ app.MapRazorComponents<App>()
     .AddAdditionalAssemblies(typeof(yt_dlp_web.Client._Imports).Assembly);
 
 // Minimal API endpoint for /api/download — delegates to IDownloadService
-app.MapPost("/api/download", async (DownloadRequest req, IDownloadService downloadService, HttpContext ctx) =>
+app.MapPost("/api/download", async (DownloadRequest req, IDownloadService downloadService, IClientInfoService clientInfo, HttpContext ctx) =>
 {
+    req.ClientIp = clientInfo.GetClientIp();
     var result = await downloadService.DownloadAsync(req, cancellationToken: ctx.RequestAborted);
     if (!result.Success)
         return Results.Problem(result.ErrorMessage);
