@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+
 namespace yt_dlp_web.Services;
 
 public class UpdateResult
@@ -16,11 +18,14 @@ public class UpdateService : BackgroundService, IUpdateService
 {
     private readonly ILoggingService _logger;
     private readonly ILogger<UpdateService> _log;
+    private readonly YtDlpOptions _options;
+    private readonly SemaphoreSlim _runLock = new(1, 1);
 
-    public UpdateService(ILoggingService logger, ILogger<UpdateService> log)
+    public UpdateService(ILoggingService logger, ILogger<UpdateService> log, IOptions<YtDlpOptions> options)
     {
         _logger = logger;
         _log = log;
+        _options = options.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -66,9 +71,14 @@ public class UpdateService : BackgroundService, IUpdateService
 
     public async Task<UpdateResult> RunUpdate()
     {
+        if (!await _runLock.WaitAsync(0))
+        {
+            return new UpdateResult { Success = false, Message = "An update is already running" };
+        }
+
         try
         {
-            var ytDlpPath = "/usr/local/bin/yt-dlp";
+            var ytDlpPath = _options.ResolveExecutablePath();
 
             if (!File.Exists(ytDlpPath))
             {
@@ -88,65 +98,84 @@ public class UpdateService : BackgroundService, IUpdateService
                 CreateNoWindow = true
             };
 
-            using var proc = System.Diagnostics.Process.Start(psi);
+            System.Diagnostics.Process? proc;
+            try
+            {
+                proc = System.Diagnostics.Process.Start(psi);
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                var msg = $"yt-dlp could not be started at {ytDlpPath}: {ex.Message}";
+                _logger.LogUpdate(msg, false);
+                _log.LogWarning(msg);
+                return new UpdateResult { Success = false, Message = msg };
+            }
+
             if (proc is null)
             {
                 _logger.LogUpdate("Failed to start update process", false);
                 return new UpdateResult { Success = false, Message = "Failed to start update process" };
             }
 
-            var stdOut = await proc.StandardOutput.ReadToEndAsync();
-            var stdErr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-
-            if (proc.ExitCode == 0)
+            using (proc)
             {
-                var output = stdOut + stdErr;
-                
-                // Check for "is up to date" message
-                bool isAlreadyLatest = output.Contains("is up to date", StringComparison.OrdinalIgnoreCase);
-                
-                string message;
-                if (isAlreadyLatest)
+                var outTask = proc.StandardOutput.ReadToEndAsync();
+                var errTask = proc.StandardError.ReadToEndAsync();
+                await Task.WhenAll(outTask, errTask);
+                await proc.WaitForExitAsync();
+
+                var stdOut = await outTask;
+                var stdErr = await errTask;
+
+                if (proc.ExitCode == 0)
                 {
-                    // Extract version from "yt-dlp is up to date (stable@2026.03.17 from yt-dlp/yt-dlp)"
-                    var versionMatch = System.Text.RegularExpressions.Regex.Match(output, @"up to date\s*\(([^)]+)\)");
-                    var version = versionMatch.Success ? versionMatch.Groups[1].Value : "current version";
-                    message = $"yt-dlp is up to date ({version})";
-                }
-                else
-                {
-                    // Check if it actually updated
-                    if (output.Contains("Updated yt-dlp to", StringComparison.OrdinalIgnoreCase))
+                    var output = stdOut + stdErr;
+                    
+                    // Check for "is up to date" message
+                    bool isAlreadyLatest = output.Contains("is up to date", StringComparison.OrdinalIgnoreCase);
+                    
+                    string message;
+                    if (isAlreadyLatest)
                     {
-                        // Extract version from "Updated yt-dlp to stable@2026.03.17 from yt-dlp/yt-dlp"
-                        var versionMatch = System.Text.RegularExpressions.Regex.Match(output, @"Updated yt-dlp to\s+([^\s]+)");
-                        var version = versionMatch.Success ? versionMatch.Groups[1].Value : "latest";
-                        message = $"yt-dlp updated successfully to {version}";
+                        // Extract version from "yt-dlp is up to date (stable@2026.03.17 from yt-dlp/yt-dlp)"
+                        var versionMatch = System.Text.RegularExpressions.Regex.Match(output, @"up to date\s*\(([^)]+)\)");
+                        var version = versionMatch.Success ? versionMatch.Groups[1].Value : "current version";
+                        message = $"yt-dlp is up to date ({version})";
                     }
                     else
                     {
-                        message = $"yt-dlp update completed at {DateTime.Now:g}";
+                        // Check if it actually updated
+                        if (output.Contains("Updated yt-dlp to", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Extract version from "Updated yt-dlp to stable@2026.03.17 from yt-dlp/yt-dlp"
+                            var versionMatch = System.Text.RegularExpressions.Regex.Match(output, @"Updated yt-dlp to\s+([^\s]+)");
+                            var version = versionMatch.Success ? versionMatch.Groups[1].Value : "latest";
+                            message = $"yt-dlp updated successfully to {version}";
+                        }
+                        else
+                        {
+                            message = $"yt-dlp update completed at {DateTime.Now:g}";
+                        }
                     }
-                }
 
-                _logger.LogUpdate(message, true);
-                _log.LogInformation("yt-dlp update completed successfully");
-                
-                return new UpdateResult 
-                { 
-                    Success = true, 
-                    Message = message,
-                    AlreadyLatest = isAlreadyLatest
-                };
-            }
-            else
-            {
-                var msg = $"Update failed with exit code {proc.ExitCode}. {stdErr}";
-                _logger.LogUpdate(msg, false);
-                _log.LogWarning($"yt-dlp update failed: {msg}");
-                
-                return new UpdateResult { Success = false, Message = msg };
+                    _logger.LogUpdate(message, true);
+                    _log.LogInformation("yt-dlp update completed successfully");
+                    
+                    return new UpdateResult 
+                    { 
+                        Success = true, 
+                        Message = message,
+                        AlreadyLatest = isAlreadyLatest
+                    };
+                }
+                else
+                {
+                    var msg = $"Update failed with exit code {proc.ExitCode}. {stdErr}";
+                    _logger.LogUpdate(msg, false);
+                    _log.LogWarning($"yt-dlp update failed: {msg}");
+                    
+                    return new UpdateResult { Success = false, Message = msg };
+                }
             }
         }
         catch (Exception ex)
@@ -156,5 +185,10 @@ public class UpdateService : BackgroundService, IUpdateService
             
             return new UpdateResult { Success = false, Message = $"Update error: {ex.Message}" };
         }
+        finally
+        {
+            _runLock.Release();
+        }
     }
 }
+

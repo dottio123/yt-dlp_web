@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 
 namespace yt_dlp_web.Services;
 
@@ -54,16 +54,14 @@ public class DownloadService : IDownloadService
     private readonly ILoggingService _logger;
     private readonly string _downloadsPath;
     private readonly string? _denoPath;
+    private readonly YtDlpOptions _options;
 
-
-
-    public DownloadService(ILoggingService logger, IDownloadStore store, IConfiguration configuration)
+    public DownloadService(ILoggingService logger, IDownloadStore store, IOptions<YtDlpOptions> options)
     {
         _logger = logger;
         _downloadsPath = store.RootPath;
-
-        // Read the configured Deno path (may be null/empty when not set)
-        _denoPath = configuration["YtDlp:DenoPath"];
+        _options = options.Value;
+        _denoPath = _options.DenoPath;
     }
 
     public async Task<DownloadResult> DownloadAsync(DownloadRequest req, Action<DownloadProgressUpdate>? onProgress = null)
@@ -91,7 +89,7 @@ public class DownloadService : IDownloadService
         var denoPath = !string.IsNullOrWhiteSpace(_denoPath) && File.Exists(_denoPath) ? _denoPath : null;
         var args = YtDlpArguments.Build(req, uri, outTemplate, denoPath);
 
-        var ytDlpPath = "/usr/local/bin/yt-dlp";
+        var ytDlpPath = _options.ResolveExecutablePath();
         var psi = new ProcessStartInfo
         {
             FileName = ytDlpPath,
@@ -113,142 +111,157 @@ public class DownloadService : IDownloadService
             {
                 var existingPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
                 if (!existingPath.Contains(denoDir, StringComparison.OrdinalIgnoreCase))
-                    psi.Environment["PATH"] = $"{denoDir};{existingPath}";
+                    psi.Environment["PATH"] = $"{denoDir}{Path.PathSeparator}{existingPath}";
             }
         }
 
-        using var proc = Process.Start(psi);
-        if (proc is null)
+        Process proc;
+        try
         {
-            var msg = "Failed to start yt-dlp process";
+            var started = Process.Start(psi);
+            if (started is null)
+            {
+                var msg = "Failed to start yt-dlp process";
+                _logger.LogError(msg, clientIp, "Download");
+                return new DownloadResult { Success = false, ErrorMessage = msg };
+            }
+            proc = started;
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            var msg = $"yt-dlp could not be started at {ytDlpPath}: {ex.Message}";
             _logger.LogError(msg, clientIp, "Download");
             return new DownloadResult { Success = false, ErrorMessage = msg };
         }
 
-        var stdOutBuilder = new StringBuilder();
-        var stdErrBuilder = new StringBuilder();
-        var progressParser = new ProgressParser();
-        var progressLock = new object();
-
-        var stdOutTask = Task.Run(async () =>
+        using (proc)
         {
-            try
+            var stdOutBuilder = new StringBuilder();
+            var stdErrBuilder = new StringBuilder();
+            var progressParser = new ProgressParser();
+            var progressLock = new object();
+
+            var stdOutTask = Task.Run(async () =>
             {
-                while (await proc.StandardOutput.ReadLineAsync() is { } line)
+                try
                 {
-                    stdOutBuilder.AppendLine(line);
-                    DownloadProgressUpdate? update;
-                    lock (progressLock)
+                    while (await proc.StandardOutput.ReadLineAsync() is { } line)
                     {
-                        update = progressParser.Parse(line, DateTime.UtcNow);
-                    }
-                    if (update != null)
-                    {
-                        onProgress?.Invoke(update);
+                        stdOutBuilder.AppendLine(line);
+                        DownloadProgressUpdate? update;
+                        lock (progressLock)
+                        {
+                            update = progressParser.Parse(line, DateTime.UtcNow);
+                        }
+                        if (update != null)
+                        {
+                            onProgress?.Invoke(update);
+                        }
                     }
                 }
-            }
-            catch { /* Ignore stream reading errors on exit */ }
-        });
+                catch { /* Ignore stream reading errors on exit */ }
+            });
 
-        var stdErrTask = Task.Run(async () =>
-        {
-            try
+            var stdErrTask = Task.Run(async () =>
             {
-                while (await proc.StandardError.ReadLineAsync() is { } line)
+                try
                 {
-                    stdErrBuilder.AppendLine(line);
-                    DownloadProgressUpdate? update;
-                    lock (progressLock)
+                    while (await proc.StandardError.ReadLineAsync() is { } line)
                     {
-                        update = progressParser.Parse(line, DateTime.UtcNow);
-                    }
-                    if (update != null)
-                    {
-                        onProgress?.Invoke(update);
+                        stdErrBuilder.AppendLine(line);
+                        DownloadProgressUpdate? update;
+                        lock (progressLock)
+                        {
+                            update = progressParser.Parse(line, DateTime.UtcNow);
+                        }
+                        if (update != null)
+                        {
+                            onProgress?.Invoke(update);
+                        }
                     }
                 }
-            }
-            catch { /* Ignore stream reading errors on exit */ }
-        });
+                catch { /* Ignore stream reading errors on exit */ }
+            });
 
-        await Task.WhenAll(stdOutTask, stdErrTask, proc.WaitForExitAsync());
+            await Task.WhenAll(stdOutTask, stdErrTask, proc.WaitForExitAsync());
 
-        var stdOut = stdOutBuilder.ToString();
-        var stdErr = stdErrBuilder.ToString();
+            var stdOut = stdOutBuilder.ToString();
+            var stdErr = stdErrBuilder.ToString();
 
-        if (proc.ExitCode != 0)
-        {
-            var msg = $"yt-dlp failed: {stdErr}";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = $"{stdErr}\n{stdOut}" };
-        }
-
-        // Find downloaded files by matching the embedded job token
-        var located = DownloadOutputLocator.Find(_downloadsPath, jobToken);
-        var matchingFile = located.MediaPath;
-        var thumbnailFilePath = located.ThumbnailPath;
-        var subtitleFiles = located.SubtitlePaths;
-
-        if (string.IsNullOrEmpty(matchingFile))
-        {
-            var tokenPattern = $"_{jobToken}.";
-            var filesInFolder = Directory.GetFiles(_downloadsPath)
-                .Where(f => Path.GetFileName(f).Contains(tokenPattern, StringComparison.Ordinal))
-                .Select(f => Path.GetFileName(f));
-            var msg = $"Could not find downloaded file with job token {jobToken}. Files in folder: {string.Join(" | ", filesInFolder)}";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
-        }
-
-        // Verify file exists (with brief retry)
-        for (int attempt = 0; attempt < 5; attempt++)
-        {
-            if (File.Exists(matchingFile)) break;
-            await Task.Delay(100);
-        }
-
-        if (!File.Exists(matchingFile))
-        {
-            var filesInDir = string.Join(" | ", Directory.GetFiles(_downloadsPath).Select(f => Path.GetFileName(f)));
-            var msg = $"File path returned by yt-dlp does not exist: {matchingFile}. Files in downloads folder: {filesInDir}";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
-        }
-
-        var fileName = Path.GetFileName(matchingFile);
-        var publicUrl = $"downloads/{Uri.EscapeDataString(fileName)}";
-
-        // Handle thumbnail
-        string? thumbFileName = null;
-        string? thumbPublicUrl = null;
-        if (!string.IsNullOrEmpty(thumbnailFilePath) && File.Exists(thumbnailFilePath))
-        {
-            thumbFileName = Path.GetFileName(thumbnailFilePath);
-            thumbPublicUrl = $"downloads/{Uri.EscapeDataString(thumbFileName)}";
-        }
-
-        // Handle subtitles
-        var subtitlesList = subtitleFiles.Select(f =>
-        {
-            var subName = Path.GetFileName(f);
-            return new DownloadFileResult
+            if (proc.ExitCode != 0)
             {
-                File = subName,
-                Url = $"downloads/{Uri.EscapeDataString(subName)}"
+                var msg = $"yt-dlp failed: {stdErr}";
+                _logger.LogError(msg, clientIp, "Download");
+                return new DownloadResult { Success = false, ErrorMessage = $"{stdErr}\n{stdOut}" };
+            }
+
+            // Find downloaded files by matching the embedded job token
+            var located = DownloadOutputLocator.Find(_downloadsPath, jobToken);
+            var matchingFile = located.MediaPath;
+            var thumbnailFilePath = located.ThumbnailPath;
+            var subtitleFiles = located.SubtitlePaths;
+
+            if (string.IsNullOrEmpty(matchingFile))
+            {
+                var tokenPattern = $"_{jobToken}.";
+                var filesInFolder = Directory.GetFiles(_downloadsPath)
+                    .Where(f => Path.GetFileName(f).Contains(tokenPattern, StringComparison.Ordinal))
+                    .Select(f => Path.GetFileName(f));
+                var msg = $"Could not find downloaded file with job token {jobToken}. Files in folder: {string.Join(" | ", filesInFolder)}";
+                _logger.LogError(msg, clientIp, "Download");
+                return new DownloadResult { Success = false, ErrorMessage = msg };
+            }
+
+            // Verify file exists (with brief retry)
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                if (File.Exists(matchingFile)) break;
+                await Task.Delay(100);
+            }
+
+            if (!File.Exists(matchingFile))
+            {
+                var filesInDir = string.Join(" | ", Directory.GetFiles(_downloadsPath).Select(f => Path.GetFileName(f)));
+                var msg = $"File path returned by yt-dlp does not exist: {matchingFile}. Files in downloads folder: {filesInDir}";
+                _logger.LogError(msg, clientIp, "Download");
+                return new DownloadResult { Success = false, ErrorMessage = msg };
+            }
+
+            var fileName = Path.GetFileName(matchingFile);
+            var publicUrl = $"downloads/{Uri.EscapeDataString(fileName)}";
+
+            // Handle thumbnail
+            string? thumbFileName = null;
+            string? thumbPublicUrl = null;
+            if (!string.IsNullOrEmpty(thumbnailFilePath) && File.Exists(thumbnailFilePath))
+            {
+                thumbFileName = Path.GetFileName(thumbnailFilePath);
+                thumbPublicUrl = $"downloads/{Uri.EscapeDataString(thumbFileName)}";
+            }
+
+            // Handle subtitles
+            var subtitlesList = subtitleFiles.Select(f =>
+            {
+                var subName = Path.GetFileName(f);
+                return new DownloadFileResult
+                {
+                    File = subName,
+                    Url = $"downloads/{Uri.EscapeDataString(subName)}"
+                };
+            }).ToList();
+
+            _logger.LogDownload(fileName, clientIp);
+
+            return new DownloadResult
+            {
+                Success = true,
+                Url = publicUrl,
+                File = fileName,
+                ThumbnailUrl = thumbPublicUrl,
+                ThumbnailFile = thumbFileName,
+                Subtitles = subtitlesList
             };
-        }).ToList();
-
-        _logger.LogDownload(fileName, clientIp);
-
-        return new DownloadResult
-        {
-            Success = true,
-            Url = publicUrl,
-            File = fileName,
-            ThumbnailUrl = thumbPublicUrl,
-            ThumbnailFile = thumbFileName,
-            Subtitles = subtitlesList
-        };
+        }
     }
 }
+

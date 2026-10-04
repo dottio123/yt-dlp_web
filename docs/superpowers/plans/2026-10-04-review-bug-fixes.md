@@ -329,18 +329,18 @@ These are the inputs most likely to hurt real users that the code paths above co
   // UpdateService(ILoggingService logger, ILogger<UpdateService> log, IOptions<YtDlpOptions> options)
   ```
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   ```csharp
   [Fact] ResolveExecutablePath_UsesConfiguredValue      // ExecutablePath "/opt/yt-dlp" → "/opt/yt-dlp"
   [Fact] ResolveExecutablePath_DefaultsPerOs            // blank → Windows: ends with Path.Combine("tools","yt-dlp.exe"); else "/usr/local/bin/yt-dlp"
   ```
-- [ ] **Step 2:** Run the tests. Expected: compile failure.
-- [ ] **Step 3: Implement and wire.** `builder.Services.Configure<YtDlpOptions>(builder.Configuration.GetSection(YtDlpOptions.SectionName))`. Change the `UpdateService` factory registration to pass `IOptions<YtDlpOptions>`. In `appsettings.json`, set `"YtDlp": { "ExecutablePath": "", "DenoPath": "" }`; this removes the personal Windows path.
-- [ ] **Step 4: Start errors.** In both services, wrap `Process.Start` in `try/catch (System.ComponentModel.Win32Exception ex)`. Log and return `$"yt-dlp could not be started at {path}: {ex.Message}"` (`LogError(..., "Download")` / `LogUpdate(..., false)`). Build the deno PATH prefix with `Path.PathSeparator` instead of `';'`.
-- [ ] **Step 5: Serialise updates.** In `UpdateService`, add `private readonly SemaphoreSlim _runLock = new(1, 1);`. `RunUpdate` does `if (!await _runLock.WaitAsync(0)) return new UpdateResult { Success = false, Message = "An update is already running" };` and releases in `finally`. Read stdout and stderr together: `await Task.WhenAll(outTask, errTask)` before `WaitForExitAsync`.
-- [ ] **Step 6:** Run the tests and build. Expected: pass, 0 errors.
-- [ ] **Step 7 (manual):** `docker compose up --build -d`, then download a short video. It must work as before. Then run once with `YtDlp__ExecutablePath=/nope` added to `docker-compose.yml` `environment`. Home must show "yt-dlp could not be started at /nope…" (no 500), and Logs must show the error. Remove the override afterwards.
-- [ ] **Step 8:** Commit: `fix: configurable yt-dlp path, handle start failures, serialise updates (F4)`
+- [x] **Step 2:** Run the tests. Expected: compile failure.
+- [x] **Step 3: Implement and wire.** `builder.Services.Configure<YtDlpOptions>(builder.Configuration.GetSection(YtDlpOptions.SectionName))`. Change the `UpdateService` factory registration to pass `IOptions<YtDlpOptions>`. In `appsettings.json`, set `"YtDlp": { "ExecutablePath": "", "DenoPath": "" }`; this removes the personal Windows path.
+- [x] **Step 4: Start errors.** In both services, wrap `Process.Start` in `try/catch (System.ComponentModel.Win32Exception ex)`. Log and return `$"yt-dlp could not be started at {path}: {ex.Message}"` (`LogError(..., "Download")` / `LogUpdate(..., false)`). Build the deno PATH prefix with `Path.PathSeparator` instead of `';'`.
+- [x] **Step 5: Serialise updates.** In `UpdateService`, add `private readonly SemaphoreSlim _runLock = new(1, 1);`. `RunUpdate` does `if (!await _runLock.WaitAsync(0)) return new UpdateResult { Success = false, Message = "An update is already running" };` and releases in `finally`. Read stdout and stderr together: `await Task.WhenAll(outTask, errTask)` before `WaitForExitAsync`.
+- [x] **Step 6:** Run the tests and build. Expected: pass, 0 errors.
+- [x] **Step 7 (manual):** `docker compose up --build -d`, then download a short video. It must work as before. Then run once with `YtDlp__ExecutablePath=/nope` added to `docker-compose.yml` `environment`. Home must show "yt-dlp could not be started at /nope…" (no 500), and Logs must show the error. Remove the override afterwards.
+- [x] **Step 8:** Commit: `fix: configurable yt-dlp path, handle start failures, serialise updates (F4)`
 
 ---
 

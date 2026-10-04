@@ -5,6 +5,7 @@ using yt_dlp_web.Components;
 using yt_dlp_web.Services;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Options;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -42,12 +43,18 @@ builder.Services.AddDataProtection()
 // Register client info service
 builder.Services.AddScoped<IClientInfoService, ClientInfoService>();
 
+// Configure YtDlp options
+builder.Services.Configure<YtDlpOptions>(builder.Configuration.GetSection(YtDlpOptions.SectionName));
+
 // Register download service
 builder.Services.AddScoped<IDownloadService, DownloadService>();
 
 // Register update service as both hosted service and injectable interface
 builder.Services.AddSingleton<IUpdateService, UpdateService>(sp =>
-    new UpdateService(sp.GetRequiredService<ILoggingService>(), sp.GetRequiredService<ILogger<UpdateService>>())
+    new UpdateService(
+        sp.GetRequiredService<ILoggingService>(),
+        sp.GetRequiredService<ILogger<UpdateService>>(),
+        sp.GetRequiredService<IOptions<YtDlpOptions>>())
 );
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IUpdateService>() as UpdateService ?? throw new InvalidOperationException());
 
