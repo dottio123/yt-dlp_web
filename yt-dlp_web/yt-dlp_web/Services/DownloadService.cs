@@ -55,14 +55,7 @@ public class DownloadService : IDownloadService
     private readonly string _downloadsPath;
     private readonly string? _denoPath;
 
-    private static readonly Regex AnsiRegex = new(@"\x1B\[[^@-~]*[@-~]", RegexOptions.Compiled);
-    private static readonly Regex ProgressTemplateRegex = new(
-        @"^download-progress:\s*([\d\.]+)%\|([^\|]*)\|([^\|]*)\|([^\|\r\n]*)",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex PercentRegex = new(@"([\d\.]+)%", RegexOptions.Compiled);
-    private static readonly Regex TotalSizeRegex = new(@"of\s+~?\s*([\d\.]+\s*[KMGTP]?i?B)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex SpeedRegex = new(@"at\s+([\d\.]+\s*[KMGTP]?i?B/s|Unknown(?:\s*B/s)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex EtaRegex = new(@"ETA\s+([\d\:]+|Unknown)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
 
     public DownloadService(ILoggingService logger, IDownloadStore store, IConfiguration configuration)
     {
@@ -134,7 +127,8 @@ public class DownloadService : IDownloadService
 
         var stdOutBuilder = new StringBuilder();
         var stdErrBuilder = new StringBuilder();
-        var trackingState = new ProgressTrackingState();
+        var progressParser = new ProgressParser();
+        var progressLock = new object();
 
         var stdOutTask = Task.Run(async () =>
         {
@@ -143,7 +137,15 @@ public class DownloadService : IDownloadService
                 while (await proc.StandardOutput.ReadLineAsync() is { } line)
                 {
                     stdOutBuilder.AppendLine(line);
-                    ParseOutputLine(line, onProgress, trackingState);
+                    DownloadProgressUpdate? update;
+                    lock (progressLock)
+                    {
+                        update = progressParser.Parse(line, DateTime.UtcNow);
+                    }
+                    if (update != null)
+                    {
+                        onProgress?.Invoke(update);
+                    }
                 }
             }
             catch { /* Ignore stream reading errors on exit */ }
@@ -156,7 +158,15 @@ public class DownloadService : IDownloadService
                 while (await proc.StandardError.ReadLineAsync() is { } line)
                 {
                     stdErrBuilder.AppendLine(line);
-                    ParseOutputLine(line, onProgress, trackingState);
+                    DownloadProgressUpdate? update;
+                    lock (progressLock)
+                    {
+                        update = progressParser.Parse(line, DateTime.UtcNow);
+                    }
+                    if (update != null)
+                    {
+                        onProgress?.Invoke(update);
+                    }
                 }
             }
             catch { /* Ignore stream reading errors on exit */ }
@@ -240,223 +250,5 @@ public class DownloadService : IDownloadService
             ThumbnailFile = thumbFileName,
             Subtitles = subtitlesList
         };
-    }
-
-    private void ParseOutputLine(string line, Action<DownloadProgressUpdate>? onProgress, ProgressTrackingState state)
-    {
-        if (onProgress == null || string.IsNullOrWhiteSpace(line)) return;
-
-        var clean = AnsiRegex.Replace(line, "").Trim();
-        if (string.IsNullOrWhiteSpace(clean)) return;
-
-        var now = DateTime.UtcNow;
-
-        // 1. Check custom progress template: download-progress:percent%|total|speed|eta
-        var templateMatch = ProgressTemplateRegex.Match(clean);
-        if (templateMatch.Success)
-        {
-            if (double.TryParse(templateMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var percent))
-            {
-                var total = templateMatch.Groups[2].Value.Trim();
-                var speed = templateMatch.Groups[3].Value.Trim();
-                var eta = templateMatch.Groups[4].Value.Trim();
-
-                if (string.Equals(speed, "NA", StringComparison.OrdinalIgnoreCase) || speed.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)) speed = null;
-                if (string.Equals(eta, "NA", StringComparison.OrdinalIgnoreCase) || eta.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)) eta = null;
-                if (string.Equals(total, "NA", StringComparison.OrdinalIgnoreCase) || total.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)) total = null;
-
-                // Smooth speed and ETA updates to ~1.2 second intervals to eliminate rapid fluttering
-                if (percent >= 100.0)
-                {
-                    state.StableEta = "00:00";
-                }
-                else if ((now - state.LastStatsTime).TotalMilliseconds >= 1200 || state.StableSpeed == null)
-                {
-                    if (!string.IsNullOrEmpty(speed)) state.StableSpeed = speed;
-                    if (!string.IsNullOrEmpty(eta)) state.StableEta = eta;
-                    state.LastStatsTime = now;
-                }
-
-                string? downloaded = null;
-                if (!string.IsNullOrEmpty(total))
-                {
-                    var m = Regex.Match(total, @"([\d\.]+)\s*(\w+)");
-                    if (m.Success && double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var tVal))
-                    {
-                        downloaded = $"{tVal * (percent / 100.0):F1} {m.Groups[2].Value}";
-                    }
-                }
-
-                // Throttle progress dispatches to prevent UI thrashing while keeping bar animation smooth
-                bool shouldEmit = percent >= 100.0 ||
-                                  state.LastReportedPercent < 0 ||
-                                  Math.Abs(percent - state.LastReportedPercent) >= 0.2 ||
-                                  (now - state.LastEmitTime).TotalMilliseconds >= 250;
-
-                if (shouldEmit)
-                {
-                    state.LastReportedPercent = percent;
-                    state.LastEmitTime = now;
-
-                    onProgress.Invoke(new DownloadProgressUpdate
-                    {
-                        Percent = Math.Clamp(percent, 0.0, 100.0),
-                        Speed = state.StableSpeed,
-                        Eta = state.StableEta,
-                        DownloadedSize = downloaded,
-                        TotalSize = total,
-                        StatusMessage = percent >= 100.0 ? "Download complete, processing..." : "Downloading media...",
-                        IsIndeterminate = false
-                    });
-                }
-                return;
-            }
-        }
-
-        // 2. Standard [download] line fallback
-        if (clean.StartsWith("[download]", StringComparison.OrdinalIgnoreCase))
-        {
-            if (clean.Contains("Destination:", StringComparison.OrdinalIgnoreCase))
-            {
-                onProgress.Invoke(new DownloadProgressUpdate
-                {
-                    Percent = 10,
-                    StatusMessage = "Starting media download...",
-                    IsIndeterminate = false
-                });
-                return;
-            }
-
-            var pMatch = PercentRegex.Match(clean);
-            if (pMatch.Success && double.TryParse(pMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var percent))
-            {
-                var totMatch = TotalSizeRegex.Match(clean);
-                var spMatch = SpeedRegex.Match(clean);
-                var etMatch = EtaRegex.Match(clean);
-
-                string? totalSize = totMatch.Success ? totMatch.Groups[1].Value.Trim() : null;
-                string? speed = spMatch.Success ? spMatch.Groups[1].Value.Trim() : null;
-                string? eta = etMatch.Success ? etMatch.Groups[1].Value.Trim() : null;
-
-                if (speed != null && (string.Equals(speed, "NA", StringComparison.OrdinalIgnoreCase) || speed.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase))) speed = null;
-                if (eta != null && (string.Equals(eta, "NA", StringComparison.OrdinalIgnoreCase) || eta.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase))) eta = null;
-
-                if (percent >= 100.0)
-                {
-                    state.StableEta = "00:00";
-                }
-                else if ((now - state.LastStatsTime).TotalMilliseconds >= 1200 || state.StableSpeed == null)
-                {
-                    if (!string.IsNullOrEmpty(speed)) state.StableSpeed = speed;
-                    if (!string.IsNullOrEmpty(eta)) state.StableEta = eta;
-                    state.LastStatsTime = now;
-                }
-
-                string? downloadedSize = null;
-                if (!string.IsNullOrEmpty(totalSize))
-                {
-                    var sizeNumMatch = Regex.Match(totalSize, @"([\d\.]+)\s*(\w+)");
-                    if (sizeNumMatch.Success && double.TryParse(sizeNumMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var totalVal))
-                    {
-                        var downloadedVal = totalVal * (percent / 100.0);
-                        downloadedSize = $"{downloadedVal:F1} {sizeNumMatch.Groups[2].Value}";
-                    }
-                }
-
-                bool shouldEmit = percent >= 100.0 ||
-                                  state.LastReportedPercent < 0 ||
-                                  Math.Abs(percent - state.LastReportedPercent) >= 0.2 ||
-                                  (now - state.LastEmitTime).TotalMilliseconds >= 250;
-
-                if (shouldEmit)
-                {
-                    state.LastReportedPercent = percent;
-                    state.LastEmitTime = now;
-
-                    onProgress.Invoke(new DownloadProgressUpdate
-                    {
-                        Percent = Math.Clamp(percent, 0.0, 100.0),
-                        Speed = state.StableSpeed,
-                        Eta = state.StableEta,
-                        DownloadedSize = downloadedSize,
-                        TotalSize = totalSize,
-                        StatusMessage = percent >= 100.0 ? "Download complete, processing..." : "Downloading media...",
-                        IsIndeterminate = false
-                    });
-                }
-                return;
-            }
-        }
-
-        // 3. Stage transitions
-        if (clean.StartsWith("[youtube]", StringComparison.OrdinalIgnoreCase) ||
-            clean.Contains("Extracting URL", StringComparison.OrdinalIgnoreCase) ||
-            clean.Contains("Downloading webpage", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 5,
-                StatusMessage = "Fetching video information...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.StartsWith("[info]", StringComparison.OrdinalIgnoreCase) ||
-                 clean.Contains("Downloading 1 format", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 8,
-                StatusMessage = "Retrieving media stream...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.StartsWith("[ExtractAudio]", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 92,
-                StatusMessage = "Extracting audio track...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.StartsWith("[Merger]", StringComparison.OrdinalIgnoreCase) ||
-                 clean.Contains("Merging formats", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 95,
-                StatusMessage = "Merging video and audio with FFmpeg...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.StartsWith("[Fixup", StringComparison.OrdinalIgnoreCase) ||
-                 clean.StartsWith("[VideoConvertor]", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 97,
-                StatusMessage = "Finalizing media file...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.Contains("Writing video subtitles", StringComparison.OrdinalIgnoreCase) ||
-                 clean.Contains("Writing video thumbnail", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 98,
-                StatusMessage = "Saving subtitles & thumbnail...",
-                IsIndeterminate = false
-            });
-        }
-    }
-
-    private class ProgressTrackingState
-    {
-        public DateTime LastStatsTime = DateTime.MinValue;
-        public string? StableSpeed;
-        public string? StableEta;
-        public double LastReportedPercent = -1;
-        public DateTime LastEmitTime = DateTime.MinValue;
     }
 }

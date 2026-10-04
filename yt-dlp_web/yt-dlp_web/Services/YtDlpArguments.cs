@@ -17,9 +17,6 @@ public static partial class YtDlpArguments
         "all"
     };
 
-    public const string ProgressTemplate =
-        "download-progress:%(progress._percent_str)s|%(progress._total_bytes_str|progress._total_bytes_estimate_str)s|%(progress._speed_str)s|%(progress._eta_str)s";
-
     [GeneratedRegex(@"^[A-Za-z0-9_+/,.\[\]<>=*:!?-]{1,200}$")]
     private static partial Regex FormatRegex();
 
@@ -69,7 +66,7 @@ public static partial class YtDlpArguments
             "--newline",
             "--no-colors",
             "--progress-template",
-            ProgressTemplate,
+            ProgressParser.Template,
             "-o",
             outputTemplate
         };

@@ -282,7 +282,7 @@ These are the inputs most likely to hurt real users that the code paths above co
   ```
   yt-dlp prints a missing value as `N/A` (sometimes `NA`, and `Unknown…` for speed/ETA). It pads fields with spaces. Treat all of these as missing. Total = the first present of total and estimate.
 
-- [ ] **Step 1: Write the failing tests** (`t0 = new DateTime(2026,1,1,0,0,0,DateTimeKind.Utc)`):
+- [x] **Step 1: Write the failing tests** (`t0 = new DateTime(2026,1,1,0,0,0,DateTimeKind.Utc)`):
   ```csharp
   [Fact] Parse_UsesEstimateWhenTotalIsNA
   //   "download-progress: 50.0%|       N/A|  10.00MiB|  1.00MiB/s|00:05"
@@ -295,15 +295,15 @@ These are the inputs most likely to hurt real users that the code paths above co
   [Fact] Parse_UsesInvariantCulture       // set CultureInfo.CurrentCulture = de-DE; DownloadedSize "5.0 MiB" (dot, not comma)
   ```
 
-- [ ] **Step 2:** Run the tests. Expected: compile failure.
+- [x] **Step 2:** Run the tests. Expected: compile failure.
 
-- [ ] **Step 3: Implement `ProgressParser`.** Move the throttling (≥0.2 % change or ≥250 ms; always emit 100 %) and the 1.2 s speed/ETA smoothing over unchanged. Drop the `[download] NN%` fallback: with `--progress-template` set, yt-dlp does not print those lines. Keep the `[download] Destination:` stage (10 %) and the other stage lines. Format `DownloadedSize` with `CultureInfo.InvariantCulture`.
+- [x] **Step 3: Implement `ProgressParser`.** Move the throttling (≥0.2 % change or ≥250 ms; always emit 100 %) and the 1.2 s speed/ETA smoothing over unchanged. Drop the `[download] NN%` fallback: with `--progress-template` set, yt-dlp does not print those lines. Keep the `[download] Destination:` stage (10 %) and the other stage lines. Format `DownloadedSize` with `CultureInfo.InvariantCulture`.
 
-- [ ] **Step 4:** In `DownloadService`, create one `ProgressParser` per call. Both reader tasks call `Parse` under a shared `lock` and invoke `onProgress` when the result is non-null.
+- [x] **Step 4:** In `DownloadService`, create one `ProgressParser` per call. Both reader tasks call `Parse` under a shared `lock` and invoke `onProgress` when the result is non-null.
 
-- [ ] **Step 5:** Run the tests and build. Expected: pass, 0 errors.
+- [x] **Step 5:** Run the tests and build. Expected: pass, 0 errors.
 
-- [ ] **Step 6:** Commit: `fix: correct progress template and parse N/A sizes (F7)`
+- [x] **Step 6:** Commit: `fix: correct progress template and parse N/A sizes (F7)`
 
 ---
 
