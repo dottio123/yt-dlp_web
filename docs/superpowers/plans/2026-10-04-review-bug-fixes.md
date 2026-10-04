@@ -99,7 +99,7 @@ These are the inputs most likely to hurt real users that the code paths above co
   }
   ```
 
-- [ ] **Step 1: Scaffold the test project**
+- [x] **Step 1: Scaffold the test project**
   ```bash
   dotnet new xunit -o tests/yt-dlp_web.Tests -f net8.0
   dotnet add tests/yt-dlp_web.Tests reference yt-dlp_web/yt-dlp_web/yt-dlp_web.csproj
@@ -107,7 +107,7 @@ These are the inputs most likely to hurt real users that the code paths above co
   ```
   Add `<FrameworkReference Include="Microsoft.AspNetCore.App" />` to the test csproj if the build complains about ASP.NET types. Delete the template's `UnitTest1.cs`. Add `tests/` to `.dockerignore`.
 
-- [ ] **Step 2: Write the failing tests** in `YtDlpArgumentsTests.cs`:
+- [x] **Step 2: Write the failing tests** in `YtDlpArgumentsTests.cs`:
   ```csharp
   [Fact] public void Validate_MaliciousUrl_IsEscapedIntoASingleArgument()
   {
@@ -130,15 +130,15 @@ These are the inputs most likely to hurt real users that the code paths above co
   [Fact] public void Build_AddsDenoRuntimeOnlyWhenGiven()        // denoPath "/d/deno" → contains "--js-runtimes","deno:/d/deno"; null → no "--js-runtimes"
   ```
 
-- [ ] **Step 3:** Run the tests. Expected: compile failure, `YtDlpArguments` not defined.
+- [x] **Step 3:** Run the tests. Expected: compile failure, `YtDlpArguments` not defined.
 
-- [ ] **Step 4: Implement `YtDlpArguments`.** Validation rules: URL must parse with `Uri.TryCreate(..., UriKind.Absolute)` and be `http`/`https`. `AudioFormat`/`SubLangs` must be null or in the sets (case-sensitive). `Format` must be null/empty or match `^[A-Za-z0-9_+/,.\[\]<>=*:!?-]{1,200}$` and not start with `-`. `Build` keeps the current option order from `DownloadService.cs:107-151` and ends with `"--", uri.AbsoluteUri`. It never uses `req.Url`.
+- [x] **Step 4: Implement `YtDlpArguments`.** Validation rules: URL must parse with `Uri.TryCreate(..., UriKind.Absolute)` and be `http`/`https`. `AudioFormat`/`SubLangs` must be null or in the sets (case-sensitive). `Format` must be null/empty or match `^[A-Za-z0-9_+/,.\[\]<>=*:!?-]{1,200}$` and not start with `-`. `Build` keeps the current option order from `DownloadService.cs:107-151` and ends with `"--", uri.AbsoluteUri`. It never uses `req.Url`.
 
-- [ ] **Step 5: Use it in `DownloadService.DownloadAsync`.** Replace lines 81-151 with `Validate` (log + return failure on error) and `Build`. Pass `_denoPath` only when `File.Exists(_denoPath)`. Replace `Arguments = string.Join(...)` with a loop over `psi.ArgumentList.Add(arg)`.
+- [x] **Step 5: Use it in `DownloadService.DownloadAsync`.** Replace lines 81-151 with `Validate` (log + return failure on error) and `Build`. Pass `_denoPath` only when `File.Exists(_denoPath)`. Replace `Arguments = string.Join(...)` with a loop over `psi.ArgumentList.Add(arg)`.
 
-- [ ] **Step 6:** Run the tests. Expected: all pass. Then `dotnet build yt-dlp_web.slnx`. Expected: 0 errors.
+- [x] **Step 6:** Run the tests. Expected: all pass. Then `dotnet build yt-dlp_web.slnx`. Expected: 0 errors.
 
-- [ ] **Step 7:** Commit: `fix: build yt-dlp arguments with ArgumentList and allow-lists (F1)`
+- [x] **Step 7:** Commit: `fix: build yt-dlp arguments with ArgumentList and allow-lists (F1)`
 
 ---
 

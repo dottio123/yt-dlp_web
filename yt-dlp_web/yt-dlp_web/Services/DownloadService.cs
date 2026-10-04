@@ -78,18 +78,11 @@ public class DownloadService : IDownloadService
     {
         var clientIp = req.ClientIp ?? "Unknown";
 
-        if (string.IsNullOrWhiteSpace(req.Url))
+        var validationError = YtDlpArguments.Validate(req, out var uri);
+        if (validationError != null || uri == null)
         {
-            var msg = "Missing url";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
-        }
-
-        if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
-        {
-            var msg = "Invalid url";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
+            _logger.LogError(validationError ?? "Invalid request", clientIp, "Download");
+            return new DownloadResult { Success = false, ErrorMessage = validationError };
         }
 
         onProgress?.Invoke(new DownloadProgressUpdate
@@ -103,63 +96,23 @@ public class DownloadService : IDownloadService
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var outTemplate = Path.Combine(_downloadsPath, $"%(title)s_{timestamp}.%(ext)s");
 
-        // Build yt-dlp arguments - enforce progress reporting, newlines, and no ANSI codes
-        var args = new List<string>
-        {
-            "--no-playlist",
-            "--progress",
-            "--newline",
-            "--no-colors",
-            "--progress-template",
-            "download-progress:%(progress._percent_str)s|%(progress._total_bytes_str|progress._total_bytes_estimate_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
-            "-o",
-            outTemplate
-        };
-
-        if (req.ExtractAudio)
-        {
-            args.Add("-x");
-            args.Add("--audio-format");
-            args.Add(req.AudioFormat ?? "mp3");
-        }
-
-        if (req.DownloadSubs)
-        {
-            args.Add("--write-subs");
-            args.Add("--sub-langs");
-            args.Add(req.SubLangs ?? "en");
-        }
-
-        if (req.IncludeThumbnail)
-        {
-            args.Add("--write-thumbnail");
-        }
-
-        if (!string.IsNullOrWhiteSpace(req.Format))
-        {
-            args.Insert(0, "-f");
-            args.Insert(1, req.Format);
-        }
-
-        args.Add(req.Url);
-
-        // Inject --js-runtimes when a valid Deno path is configured.
-        if (!string.IsNullOrWhiteSpace(_denoPath) && File.Exists(_denoPath))
-        {
-            args.Insert(0, "--js-runtimes");
-            args.Insert(1, $"deno:{_denoPath}");
-        }
+        var denoPath = !string.IsNullOrWhiteSpace(_denoPath) && File.Exists(_denoPath) ? _denoPath : null;
+        var args = YtDlpArguments.Build(req, uri, outTemplate, denoPath);
 
         var ytDlpPath = "/usr/local/bin/yt-dlp";
         var psi = new ProcessStartInfo
         {
             FileName = ytDlpPath,
-            Arguments = string.Join(' ', args.Select(a => a.Contains(' ') ? '"' + a + '"' : a)),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+
+        foreach (var arg in args)
+        {
+            psi.ArgumentList.Add(arg);
+        }
 
         if (!string.IsNullOrWhiteSpace(_denoPath))
         {

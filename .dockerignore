@@ -15,6 +15,7 @@ docker-compose*.yml
 *.slnx
 Package/
 docs/
+tests/
 caddy/
 publish_client/
 config/
