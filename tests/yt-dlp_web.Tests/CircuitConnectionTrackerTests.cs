@@ -67,4 +67,39 @@ public class CircuitConnectionTrackerTests
 
         tracker.Dispose();
     }
+
+    [Fact]
+    public async Task ReconnectAfterGrace_ProvidesFreshToken()
+    {
+        var options = Options.Create(new YtDlpOptions { DisconnectGraceSeconds = 0 });
+        using var tracker = new CircuitConnectionTracker(options);
+
+        var oldToken = tracker.DisconnectedToken;
+        await tracker.OnConnectionDownAsync(null!, CancellationToken.None);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        while (!oldToken.IsCancellationRequested && stopwatch.ElapsedMilliseconds < 1000)
+        {
+            await Task.Delay(25);
+        }
+
+        Assert.True(oldToken.IsCancellationRequested);
+
+        await tracker.OnConnectionUpAsync(null!, CancellationToken.None);
+
+        Assert.True(oldToken.IsCancellationRequested);
+        Assert.False(tracker.DisconnectedToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task ReconnectAfterCircuitClosed_StaysCancelled()
+    {
+        var options = Options.Create(new YtDlpOptions { DisconnectGraceSeconds = 30 });
+        using var tracker = new CircuitConnectionTracker(options);
+
+        await tracker.OnCircuitClosedAsync(null!, CancellationToken.None);
+        await tracker.OnConnectionUpAsync(null!, CancellationToken.None);
+
+        Assert.True(tracker.DisconnectedToken.IsCancellationRequested);
+    }
 }

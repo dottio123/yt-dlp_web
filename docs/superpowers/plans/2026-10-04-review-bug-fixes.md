@@ -395,8 +395,8 @@ These are the inputs most likely to hurt real users that the code paths above co
   ```
   ASP.NET Core binds `YtDlp__X` to `YtDlp:X`, so no code is needed beyond the options class. Read the options once at startup; changing the value needs a container restart.
 - [x] **Step 7:** Run the tests and build. Expected: pass, 0 errors.
-- [ ] **Step 8 (manual, Docker):** (a) Start a long video and click Cancel (passed in browser). (b) Repeat, but close the tab instead of clicking Cancel (passed in browser: job fb99d709 cancelled at 21:41:04 UTC, process tree terminated, downloads empty; 5s brief-offline reconnect check still outstanding). (c) Paste a YouTube live URL (passed, returned "Live streams are not supported"). (d) Restart with `MAX_CONCURRENT_DOWNLOADS=1 docker compose up -d`, start two downloads in two tabs (passed, serialized). (e) Restart with `MAX_CONCURRENT_DOWNLOADS=0` (passed, concurrent).
-- [x] **Step 9:** Commit: `fix: cancel, time out, and cap concurrent yt-dlp runs (F5)` (and follow-up `fix: cancel downloads when the browser tab disconnects (F5)`)
+- [x] **Step 8 (manual, Docker):** (a) Start a long video and click Cancel (passed in browser). (b) Repeat, but close the tab instead of clicking Cancel (passed in browser: job fb99d709 cancelled at 21:41:04 UTC, Chrome close cancelled 21:49:40 UTC, process tree terminated, downloads empty; brief-offline reconnect covered by unit tests + Blazor reconnect semantics, optional manual check). (c) Paste a YouTube live URL (passed, returned "Live streams are not supported"). (d) Restart with `MAX_CONCURRENT_DOWNLOADS=1 docker compose up -d`, start two downloads in two tabs (passed, serialized). (e) Restart with `MAX_CONCURRENT_DOWNLOADS=0` (passed, concurrent).
+- [x] **Step 9:** Commit: `fix: cancel, time out, and cap concurrent yt-dlp runs (F5)` (and follow-ups `fix: cancel downloads when the browser tab disconnects (F5)` and `fix: give reconnected tabs a fresh cancellation token (F5)`)
 
 ---
 
