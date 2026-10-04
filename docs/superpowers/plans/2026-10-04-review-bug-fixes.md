@@ -395,7 +395,7 @@ These are the inputs most likely to hurt real users that the code paths above co
   ```
   ASP.NET Core binds `YtDlp__X` to `YtDlp:X`, so no code is needed beyond the options class. Read the options once at startup; changing the value needs a container restart.
 - [x] **Step 7:** Run the tests and build. Expected: pass, 0 errors.
-- [ ] **Step 8 (manual, Docker):** (a) Start a long video and click Cancel. Within a few seconds the UI shows "Download cancelled", `docker exec yt-dlp-web ps` lists no `yt-dlp`, and `config/downloads` has no file for that job. (b) Repeat, but close the tab instead of clicking Cancel; the result is the same. (c) Paste a YouTube live URL; the result is "Live streams are not supported". (d) Restart with `MAX_CONCURRENT_DOWNLOADS=1 docker compose up -d`, start two downloads in two tabs; the second shows "Waiting for another download…" until the first finishes. (e) Restart with `MAX_CONCURRENT_DOWNLOADS=0`; both start at once.
+- [ ] **Step 8 (manual, Docker):** (a) Start a long video and click Cancel (passed in browser). (b) Repeat, but close the tab instead of clicking Cancel (passed in browser: job fb99d709 cancelled at 21:41:04 UTC, process tree terminated, downloads empty; 5s brief-offline reconnect check still outstanding). (c) Paste a YouTube live URL (passed, returned "Live streams are not supported"). (d) Restart with `MAX_CONCURRENT_DOWNLOADS=1 docker compose up -d`, start two downloads in two tabs (passed, serialized). (e) Restart with `MAX_CONCURRENT_DOWNLOADS=0` (passed, concurrent).
 - [x] **Step 9:** Commit: `fix: cancel, time out, and cap concurrent yt-dlp runs (F5)` (and follow-up `fix: cancel downloads when the browser tab disconnects (F5)`)
 
 ---
