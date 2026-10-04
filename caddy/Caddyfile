@@ -1,13 +1,7 @@
 # Caddyfile for yt-dlp_web
-# Replace example.com with your domain or IP/hostname for production
+# Replace :80 with your domain name (e.g. ytdlp.example.com) for automatic HTTPS
 
 :80 {
-	# Serve static site
-	root * /srv/site
 	encode gzip
-	file_server
-
-	# Proxy API and download endpoints to the yt-dlp-web service
-	reverse_proxy /api/* yt-dlp-web:80
-	reverse_proxy /download/* yt-dlp-web:80
+	reverse_proxy yt-dlp-web:8080
 }

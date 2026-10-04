@@ -46,10 +46,6 @@ COPY --from=build /app/publish .
 # Copy Blazor WASM client static assets into wwwroot
 COPY --from=build /app/clientpublish/wwwroot/. /app/wwwroot/
 
-# Copy service worker and manifest
-COPY yt-dlp_web/yt-dlp_web/ServiceWorkerFiles/manifest.webmanifest /app/wwwroot/manifest.webmanifest
-COPY yt-dlp_web/yt-dlp_web/ServiceWorkerFiles/service-worker.js /app/wwwroot/service-worker.js
-
 # Copy entrypoint, fix line endings, set permissions — all in one layer
 COPY yt-dlp_web/yt-dlp_web/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN sed -i 's/\r$//' /app/docker-entrypoint.sh \

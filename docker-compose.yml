@@ -6,6 +6,8 @@ services:
       dockerfile: yt-dlp_web/yt-dlp_web/Dockerfile
     image: yt-dlp-web:latest
     environment:
+      # Time zone for log timestamps and the nightly yt-dlp update, which runs at local midnight.
+      - TZ=${TZ:-UTC}
       - ASPNETCORE_ENVIRONMENT=Production
       - UPDATE_YTDLP=1
       - YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
