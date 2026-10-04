@@ -362,3 +362,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Runtime data (Data Protection keys, logs, downloads)
+/config/
