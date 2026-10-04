@@ -137,4 +137,23 @@ public class YtDlpArgumentsTests
         var argsWithoutDeno = YtDlpArguments.Build(req, uri!, "/dl/%(title)s.%(ext)s", null);
         Assert.DoesNotContain("--js-runtimes", argsWithoutDeno);
     }
+
+    [Fact]
+    public void OutputTemplate_TruncatesTitle()
+    {
+        var token = "20261004_120000_12345678";
+        var template = YtDlpArguments.OutputTemplate("/downloads", token);
+        Assert.Contains("%(title).150B_" + token + ".%(ext)s", template);
+    }
+
+    [Fact]
+    public void NewJobToken_IsUniqueWithinOneSecond()
+    {
+        var tokens = new HashSet<string>();
+        for (int i = 0; i < 1000; i++)
+        {
+            tokens.Add(YtDlpArguments.NewJobToken());
+        }
+        Assert.Equal(1000, tokens.Count);
+    }
 }

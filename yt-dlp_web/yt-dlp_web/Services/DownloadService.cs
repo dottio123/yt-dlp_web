@@ -91,9 +91,9 @@ public class DownloadService : IDownloadService
             IsIndeterminate = true
         });
 
-        // Create output template with video title and timestamp
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var outTemplate = Path.Combine(_downloadsPath, $"%(title)s_{timestamp}.%(ext)s");
+        // Create output template with video title and unique job token
+        var jobToken = YtDlpArguments.NewJobToken();
+        var outTemplate = YtDlpArguments.OutputTemplate(_downloadsPath, jobToken);
 
         var denoPath = !string.IsNullOrWhiteSpace(_denoPath) && File.Exists(_denoPath) ? _denoPath : null;
         var args = YtDlpArguments.Build(req, uri, outTemplate, denoPath);
@@ -174,34 +174,19 @@ public class DownloadService : IDownloadService
             return new DownloadResult { Success = false, ErrorMessage = $"{stdErr}\n{stdOut}" };
         }
 
-        // Find downloaded files by matching the embedded timestamp
-        var timestampPattern = $"_{timestamp}";
-        var downloadedFiles = Directory.GetFiles(_downloadsPath)
-            .Where(f => Path.GetFileName(f).Contains(timestampPattern, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        var imageExts = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-        var subExts = new[] { ".vtt", ".srt", ".ass", ".ssa" };
-
-        var matchingFile = downloadedFiles
-            .Where(f => !imageExts.Contains(Path.GetExtension(f).ToLowerInvariant()) &&
-                        !subExts.Contains(Path.GetExtension(f).ToLowerInvariant()))
-            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
-            .FirstOrDefault();
-
-        var thumbnailFilePath = downloadedFiles
-            .Where(f => imageExts.Contains(Path.GetExtension(f).ToLowerInvariant()))
-            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
-            .FirstOrDefault();
-
-        var subtitleFiles = downloadedFiles
-            .Where(f => subExts.Contains(Path.GetExtension(f).ToLowerInvariant()))
-            .OrderByDescending(f => new FileInfo(f).Name)
-            .ToList();
+        // Find downloaded files by matching the embedded job token
+        var located = DownloadOutputLocator.Find(_downloadsPath, jobToken);
+        var matchingFile = located.MediaPath;
+        var thumbnailFilePath = located.ThumbnailPath;
+        var subtitleFiles = located.SubtitlePaths;
 
         if (string.IsNullOrEmpty(matchingFile))
         {
-            var msg = $"Could not find downloaded file with timestamp {timestamp}. Files in folder: {string.Join(" | ", downloadedFiles.Select(f => Path.GetFileName(f)))}";
+            var tokenPattern = $"_{jobToken}.";
+            var filesInFolder = Directory.GetFiles(_downloadsPath)
+                .Where(f => Path.GetFileName(f).Contains(tokenPattern, StringComparison.Ordinal))
+                .Select(f => Path.GetFileName(f));
+            var msg = $"Could not find downloaded file with job token {jobToken}. Files in folder: {string.Join(" | ", filesInFolder)}";
             _logger.LogError(msg, clientIp, "Download");
             return new DownloadResult { Success = false, ErrorMessage = msg };
         }

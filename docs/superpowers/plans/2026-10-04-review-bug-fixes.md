@@ -228,7 +228,7 @@ These are the inputs most likely to hurt real users that the code paths above co
   public static string OutputTemplate(string downloadsPath, string jobToken); // Path.Combine(downloadsPath, $"%(title).150B_{jobToken}.%(ext)s")
   ```
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   ```csharp
   // MediaFileTypesTests
   [Theory] [InlineData("a.OPUS", true)] [InlineData("a.mp4", false)] IsAudio_IsCaseInsensitive
@@ -250,15 +250,15 @@ These are the inputs most likely to hurt real users that the code paths above co
   [Fact] NewJobToken_IsUniqueWithinOneSecond                  // 1000 calls → 1000 distinct values
   ```
 
-- [ ] **Step 2:** Run the tests. Expected: compile failure.
+- [x] **Step 2:** Run the tests. Expected: compile failure.
 
-- [ ] **Step 3: Implement.** `Find` matches files whose name contains `$"_{jobToken}."` (ordinal), drops `IsPartial`, picks media = not image and not subtitle, newest by `LastWriteTimeUtc`; thumbnail = newest image; subtitles ordered by name. The `"_tok1."` match is what keeps `A_tok10.mp4` out.
+- [x] **Step 3: Implement.** `Find` matches files whose name contains `$"_{jobToken}."` (ordinal), drops `IsPartial`, picks media = not image and not subtitle, newest by `LastWriteTimeUtc`; thumbnail = newest image; subtitles ordered by name. The `"_tok1."` match is what keeps `A_tok10.mp4` out.
 
-- [ ] **Step 4: Use it in `DownloadService`.** Replace the timestamp (lines 102-104) with `NewJobToken()`/`OutputTemplate(...)`. Replace lines 225-270 with `DownloadOutputLocator.Find`. Keep the "could not find downloaded file" error, but list only files containing the token. Delete the local `imageExts`/`subExts` arrays.
+- [x] **Step 4: Use it in `DownloadService`.** Replace the timestamp (lines 102-104) with `NewJobToken()`/`OutputTemplate(...)`. Replace lines 225-270 with `DownloadOutputLocator.Find`. Keep the "could not find downloaded file" error, but list only files containing the token. Delete the local `imageExts`/`subExts` arrays.
 
-- [ ] **Step 5:** Run the tests and build. Expected: pass, 0 errors.
+- [x] **Step 5:** Run the tests and build. Expected: pass, 0 errors.
 
-- [ ] **Step 6:** Commit: `fix: locate yt-dlp output by unique job token (F3)`
+- [x] **Step 6:** Commit: `fix: locate yt-dlp output by unique job token (F3)`
 
 ---
 

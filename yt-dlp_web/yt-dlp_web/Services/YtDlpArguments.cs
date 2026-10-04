@@ -110,4 +110,14 @@ public static partial class YtDlpArguments
 
         return args;
     }
+
+    public static string NewJobToken()
+    {
+        return $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..24];
+    }
+
+    public static string OutputTemplate(string downloadsPath, string jobToken)
+    {
+        return Path.Combine(downloadsPath, $"%(title).150B_{jobToken}.%(ext)s");
+    }
 }
