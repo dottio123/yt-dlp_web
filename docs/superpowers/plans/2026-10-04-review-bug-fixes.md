@@ -371,22 +371,22 @@ These are the inputs most likely to hurt real users that the code paths above co
   }
   ```
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   ```csharp
   [Fact] Build_DisablesPlaylistsAndLiveStreams   // args contain "--no-playlist" and the sequence "--match-filter","!is_live"
   [Fact] DownloadLimiter_BlocksBeyondMax         // max 1: first WaitAsync completes; second is not completed; after Release() it completes; IsSaturated true while held
   [Fact] DownloadLimiter_WaitIsCancellable       // max 1, held; WaitAsync(cancelledToken) throws OperationCanceledException
   [Fact] DownloadLimiter_ZeroMeansUnlimited      // max 0: 50 WaitAsync calls all complete immediately; IsSaturated stays false; Release() never throws
   ```
-- [ ] **Step 2:** Run the tests. Expected: failures/compile errors.
-- [ ] **Step 3: Implement in `DownloadService`:**
+- [x] **Step 2:** Run the tests. Expected: failures/compile errors.
+- [x] **Step 3: Implement in `DownloadService`:**
   - Create a linked CTS from `cancellationToken`, then call `CancelAfter(TimeSpan.FromMinutes(TimeoutMinutes))`.
   - If `IsSaturated`, emit status "Waiting for another download to finish…" first, then `await limiter.WaitAsync(token)`. Release in `finally`.
   - Pass the token to `WaitForExitAsync`. On `OperationCanceledException`: `proc.Kill(entireProcessTree: true)` (ignore `InvalidOperationException`), `await proc.WaitForExitAsync(CancellationToken.None)`, delete every file in the downloads folder whose name contains `$"_{jobToken}."`, log, and return `Success = false` with `"Download cancelled"` or `$"Download timed out after {TimeoutMinutes} minutes"` (tell them apart with `cancellationToken.IsCancellationRequested`).
   - If no media file is found and stdout contains `does not pass filter`, return `"Live streams are not supported"`.
-- [ ] **Step 4: Endpoint.** `/api/download` takes `HttpContext ctx` and passes `ctx.RequestAborted`. Register `DownloadLimiter` as a singleton.
-- [ ] **Step 5: Home.razor.** Add `@implements IDisposable` and a `CancellationTokenSource? downloadCts` field. Create it in `StartDownload`, pass `downloadCts.Token`, and dispose it in `finally`. Add a "Cancel" button in the progress card header (`btn btn-sm btn-outline-secondary`) that calls `downloadCts?.Cancel()`. `Dispose()` cancels and disposes the CTS, so closing the tab kills yt-dlp.
-- [ ] **Step 6: Expose the limits as environment variables.** In `docker-compose.yml` `environment`, add:
+- [x] **Step 4: Endpoint.** `/api/download` takes `HttpContext ctx` and passes `ctx.RequestAborted`. Register `DownloadLimiter` as a singleton.
+- [x] **Step 5: Home.razor.** Add `@implements IDisposable` and a `CancellationTokenSource? downloadCts` field. Create it in `StartDownload`, pass `downloadCts.Token`, and dispose it in `finally`. Add a "Cancel" button in the progress card header (`btn btn-sm btn-outline-secondary`) that calls `downloadCts?.Cancel()`. `Dispose()` cancels and disposes the CTS, so closing the tab kills yt-dlp.
+- [x] **Step 6: Expose the limits as environment variables.** In `docker-compose.yml` `environment`, add:
   ```yaml
   # Max yt-dlp downloads running at once; extra requests wait. 0 = no limit.
   - YtDlp__MaxConcurrentDownloads=${MAX_CONCURRENT_DOWNLOADS:-4}
@@ -394,7 +394,7 @@ These are the inputs most likely to hurt real users that the code paths above co
   - YtDlp__TimeoutMinutes=${DOWNLOAD_TIMEOUT_MINUTES:-180}
   ```
   ASP.NET Core binds `YtDlp__X` to `YtDlp:X`, so no code is needed beyond the options class. Read the options once at startup; changing the value needs a container restart.
-- [ ] **Step 7:** Run the tests and build. Expected: pass, 0 errors.
+- [x] **Step 7:** Run the tests and build. Expected: pass, 0 errors.
 - [ ] **Step 8 (manual, Docker):** (a) Start a long video and click Cancel. Within a few seconds the UI shows "Download cancelled", `docker exec yt-dlp-web ps` lists no `yt-dlp`, and `config/downloads` has no file for that job. (b) Repeat, but close the tab instead of clicking Cancel; the result is the same. (c) Paste a YouTube live URL; the result is "Live streams are not supported". (d) Restart with `MAX_CONCURRENT_DOWNLOADS=1 docker compose up -d`, start two downloads in two tabs; the second shows "Waiting for another download…" until the first finishes. (e) Restart with `MAX_CONCURRENT_DOWNLOADS=0`; both start at once.
 - [ ] **Step 9:** Commit: `fix: cancel, time out, and cap concurrent yt-dlp runs (F5)`
 

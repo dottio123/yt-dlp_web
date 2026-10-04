@@ -156,4 +156,21 @@ public class YtDlpArgumentsTests
         }
         Assert.Equal(1000, tokens.Count);
     }
+
+    [Fact]
+    public void Build_DisablesPlaylistsAndLiveStreams()
+    {
+        var req = new DownloadRequest { Url = "https://example.com/video" };
+        Assert.Null(YtDlpArguments.Validate(req, out var uri));
+        var args = YtDlpArguments.Build(req, uri!, "/dl/%(title)s.%(ext)s", null);
+
+        Assert.Contains("--no-playlist", args);
+
+        var matchFilterIndex = args.IndexOf("--match-filter");
+        Assert.True(matchFilterIndex >= 0);
+        Assert.Equal("!is_live", args[matchFilterIndex + 1]);
+
+        var dashDashIndex = args.IndexOf("--");
+        Assert.True(matchFilterIndex < dashDashIndex);
+    }
 }

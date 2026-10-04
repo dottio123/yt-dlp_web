@@ -6,6 +6,8 @@ public sealed class YtDlpOptions
 
     public string? ExecutablePath { get; set; }
     public string? DenoPath { get; set; }
+    public int TimeoutMinutes { get; set; } = 180;
+    public int MaxConcurrentDownloads { get; set; } = 4;
 
     public string ResolveExecutablePath()
     {

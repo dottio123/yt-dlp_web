@@ -102,6 +102,9 @@ public static partial class YtDlpArguments
             args.Insert(1, $"deno:{denoPath}");
         }
 
+        args.Add("--match-filter");
+        args.Add("!is_live");
+
         args.Add("--");
         args.Add(uri.AbsoluteUri);
 

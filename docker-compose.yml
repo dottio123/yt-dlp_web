@@ -9,6 +9,10 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - UPDATE_YTDLP=1
       - YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+      # Max yt-dlp downloads running at once; extra requests wait. 0 = no limit.
+      - YtDlp__MaxConcurrentDownloads=${MAX_CONCURRENT_DOWNLOADS:-4}
+      # Kill a download that runs longer than this many minutes.
+      - YtDlp__TimeoutMinutes=${DOWNLOAD_TIMEOUT_MINUTES:-180}
     ports:
       # Map host port 7022 to the container's HTTP port (the app is listening on 8080 inside the container)
       - "7022:8080"

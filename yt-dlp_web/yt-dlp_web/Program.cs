@@ -46,6 +46,9 @@ builder.Services.AddScoped<IClientInfoService, ClientInfoService>();
 // Configure YtDlp options
 builder.Services.Configure<YtDlpOptions>(builder.Configuration.GetSection(YtDlpOptions.SectionName));
 
+// Register download limiter
+builder.Services.AddSingleton<DownloadLimiter>();
+
 // Register download service
 builder.Services.AddScoped<IDownloadService, DownloadService>();
 
@@ -112,9 +115,9 @@ app.MapRazorComponents<App>()
     .AddAdditionalAssemblies(typeof(yt_dlp_web.Client._Imports).Assembly);
 
 // Minimal API endpoint for /api/download — delegates to IDownloadService
-app.MapPost("/api/download", async (DownloadRequest req, IDownloadService downloadService) =>
+app.MapPost("/api/download", async (DownloadRequest req, IDownloadService downloadService, HttpContext ctx) =>
 {
-    var result = await downloadService.DownloadAsync(req);
+    var result = await downloadService.DownloadAsync(req, cancellationToken: ctx.RequestAborted);
     if (!result.Success)
         return Results.Problem(result.ErrorMessage);
 

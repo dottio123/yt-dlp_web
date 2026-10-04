@@ -1,5 +1,6 @@
 @page "/"
 @rendermode InteractiveServer
+@implements IDisposable
 @using yt_dlp_web.Services
 @inject IDownloadService DownloadService
 @inject IUpdateService UpdateService
@@ -151,16 +152,19 @@
                     <span>@(currentProgress.StatusMessage)</span>
                 </div>
             </div>
-            <div class="d-flex align-items-baseline gap-1">
-                @if (!currentProgress.IsIndeterminate || currentProgress.Percent > 0)
-                {
-                    <span class="h3 fw-bold mb-0" style="color: var(--accent-red); font-family: ui-monospace, monospace;">@($"{currentProgress.Percent:F1}%")</span>
-                }
-                else
-                {
-                    <span class="spinner-border spinner-border-sm text-danger me-1" role="status"></span>
-                    <span class="small text-muted fw-semibold">Processing...</span>
-                }
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CancelDownload">Cancel</button>
+                <div class="d-flex align-items-baseline gap-1">
+                    @if (!currentProgress.IsIndeterminate || currentProgress.Percent > 0)
+                    {
+                        <span class="h3 fw-bold mb-0" style="color: var(--accent-red); font-family: ui-monospace, monospace;">@($"{currentProgress.Percent:F1}%")</span>
+                    }
+                    else
+                    {
+                        <span class="spinner-border spinner-border-sm text-danger me-1" role="status"></span>
+                        <span class="small text-muted fw-semibold">Processing...</span>
+                    }
+                </div>
             </div>
         </div>
 
@@ -399,6 +403,7 @@
     private bool includeThumbnail;
 
     private DownloadProgressUpdate currentProgress = new();
+    private CancellationTokenSource? downloadCts;
 
     private bool IsCurrentResultAudio
     {
@@ -417,6 +422,9 @@
 
     private void ResetForm()
     {
+        downloadCts?.Cancel();
+        downloadCts?.Dispose();
+        downloadCts = null;
         videoUrl = string.Empty;
         error = null;
         fileName = null;
@@ -427,6 +435,18 @@
         thumbFullUrl = null;
         resultSubtitles.Clear();
         currentProgress = new();
+    }
+
+    private void CancelDownload()
+    {
+        downloadCts?.Cancel();
+    }
+
+    public void Dispose()
+    {
+        downloadCts?.Cancel();
+        downloadCts?.Dispose();
+        downloadCts = null;
     }
 
     private async Task StartDownload()
@@ -448,6 +468,7 @@
         }
 
         isBusy = true;
+        downloadCts = new CancellationTokenSource();
         currentProgress = new DownloadProgressUpdate
         {
             Percent = 0,
@@ -475,7 +496,7 @@
                     currentProgress = progress;
                     StateHasChanged();
                 });
-            });
+            }, downloadCts.Token);
 
             if (!result.Success)
             {
@@ -503,6 +524,10 @@
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            error = "Download cancelled";
+        }
         catch (Exception ex)
         {
             error = ex.Message;
@@ -510,6 +535,8 @@
         finally
         {
             isBusy = false;
+            downloadCts?.Dispose();
+            downloadCts = null;
         }
     }
 
