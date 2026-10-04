@@ -25,11 +25,13 @@ public interface ILoggingService
 public class LoggingService : ILoggingService
 {
     private readonly string _logsPath;
+    private readonly long _maxFileBytes;
     private readonly object _lockObj = new();
 
-    public LoggingService(string logsPath)
+    public LoggingService(string logsPath, long maxFileBytes = 5 * 1024 * 1024)
     {
         _logsPath = logsPath;
+        _maxFileBytes = maxFileBytes;
         Directory.CreateDirectory(_logsPath);
     }
 
@@ -104,30 +106,61 @@ public class LoggingService : ILoggingService
     {
         lock (_lockObj)
         {
-            var logsFile = Path.Combine(_logsPath, "logs.jsonl");
+            var current = Path.Combine(_logsPath, "logs.jsonl");
+            var previous = Path.Combine(_logsPath, "logs.1.jsonl");
+
+            if (File.Exists(current))
+            {
+                var fileInfo = new FileInfo(current);
+                if (fileInfo.Length >= _maxFileBytes)
+                {
+                    File.Move(current, previous, overwrite: true);
+                }
+            }
+
             var json = JsonSerializer.Serialize(entry);
-            File.AppendAllText(logsFile, json + Environment.NewLine);
+            File.AppendAllText(current, json + Environment.NewLine);
         }
     }
 
     private List<LogEntry> ReadLogs()
     {
-        var logsFile = Path.Combine(_logsPath, "logs.jsonl");
-        if (!File.Exists(logsFile))
-            return new();
+        var entries = new List<LogEntry>();
+        var previous = Path.Combine(_logsPath, "logs.1.jsonl");
+        var current = Path.Combine(_logsPath, "logs.jsonl");
 
-        try
+        ReadLinesInto(previous, entries);
+        ReadLinesInto(current, entries);
+
+        return entries;
+    }
+
+    private static void ReadLinesInto(string filePath, List<LogEntry> entries)
+    {
+        if (!File.Exists(filePath))
         {
-            return File.ReadAllLines(logsFile)
-                .Where(line => !string.IsNullOrWhiteSpace(line))
-                .Select(line => JsonSerializer.Deserialize<LogEntry>(line))
-                .Where(e => e != null)
-                .Cast<LogEntry>()
-                .ToList();
+            return;
         }
-        catch
+
+        foreach (var line in File.ReadLines(filePath))
         {
-            return new();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            try
+            {
+                var entry = JsonSerializer.Deserialize<LogEntry>(line);
+                if (entry != null)
+                {
+                    entries.Add(entry);
+                }
+            }
+            catch (JsonException)
+            {
+                // Skip malformed lines individually
+            }
         }
     }
 }

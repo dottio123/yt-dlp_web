@@ -409,7 +409,7 @@ These are the inputs most likely to hurt real users that the code paths above co
 **Interfaces:**
 - Produces: `public LoggingService(string logsPath, long maxFileBytes = 5 * 1024 * 1024)`. Current file `logs.jsonl`, previous file `logs.1.jsonl`.
 
-- [ ] **Step 1: Write the failing tests** (temp dir):
+- [x] **Step 1: Write the failing tests** (temp dir):
   ```csharp
   [Fact] GetLogs_SkipsMalformedLines
   //   LogDownload("a.mp4","1.1.1.1"); File.AppendAllText(logs.jsonl, "{\"Timestamp\":\"2026-\n");
@@ -419,10 +419,10 @@ These are the inputs most likely to hurt real users that the code paths above co
   //   → File.Exists(logs.1.jsonl); new FileInfo(logs.jsonl).Length < 600; GetLogs().Last().Message == "e19";
   //     GetLogs() is in chronological order
   ```
-- [ ] **Step 2:** Run the tests. Expected: first test fails (returns 0 entries); second fails to compile.
-- [ ] **Step 3: Implement.** In `ReadLogs`, read `logs.1.jsonl` then `logs.jsonl`, deserialising each line in its own `try/catch (JsonException)`. In `SaveEntry`, inside the existing lock, if `logs.jsonl` length ≥ `maxFileBytes` then `File.Move(current, previous, overwrite: true)` before appending.
-- [ ] **Step 4:** Run the tests. Expected: pass.
-- [ ] **Step 5:** Commit: `fix: skip bad log lines and rotate logs (F6)`
+- [x] **Step 2:** Run the tests. Expected: first test fails (returns 0 entries); second fails to compile.
+- [x] **Step 3: Implement.** In `ReadLogs`, read `logs.1.jsonl` then `logs.jsonl`, deserialising each line in its own `try/catch (JsonException)`. In `SaveEntry`, inside the existing lock, if `logs.jsonl` length ≥ `maxFileBytes` then `File.Move(current, previous, overwrite: true)` before appending.
+- [x] **Step 4:** Run the tests. Expected: pass.
+- [x] **Step 5:** Commit: `fix: skip bad log lines and rotate logs (F6)`
 
 ---
 
