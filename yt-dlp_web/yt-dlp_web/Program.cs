@@ -29,6 +29,10 @@ var logsPath = Path.Combine(contentRoot, "config", "logs");
 Directory.CreateDirectory(logsPath);
 builder.Services.AddSingleton<ILoggingService>(new LoggingService(logsPath));
 
+// Configure download store — persist downloads in the mounted config volume
+var downloadStore = new DownloadStore(Path.Combine(contentRoot, "config", "downloads"));
+builder.Services.AddSingleton<IDownloadStore>(downloadStore);
+
 // Configure Data Protection to persist keys in the mounted config volume
 var keysPath = Path.Combine(contentRoot, "config", "keys");
 builder.Services.AddDataProtection()
@@ -59,10 +63,6 @@ var app = builder.Build();
 
 app.UseForwardedHeaders();
 
-// Downloads directory — persist in the mounted config volume
-var downloadsPath = Path.Combine(contentRoot, "config", "downloads");
-Directory.CreateDirectory(downloadsPath);
-
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -92,7 +92,7 @@ contentTypeProvider.Mappings[".webp"] = "image/webp";
 // Serve files from the downloads folder under the request path /downloads
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(downloadsPath),
+    FileProvider = new PhysicalFileProvider(downloadStore.RootPath),
     RequestPath = "/downloads",
     ContentTypeProvider = contentTypeProvider
 });
@@ -122,25 +122,19 @@ app.MapPost("/api/download", async (DownloadRequest req, IDownloadService downlo
 });
 
 // Download endpoint that serves files with Content-Disposition: attachment
-app.MapGet("/download/{fileName}", (string fileName) =>
+app.MapGet("/download/{fileName}", (string fileName, IDownloadStore store) =>
 {
     try
     {
-        var decodedFileName = Uri.UnescapeDataString(fileName);
-        var filePath = Path.Combine(downloadsPath, decodedFileName);
-
-        // Security: ensure the file is within the downloads folder
-        var fullDownloadsPath = Path.GetFullPath(downloadsPath);
-        var fullFilePath = Path.GetFullPath(filePath);
-        if (!fullFilePath.StartsWith(fullDownloadsPath, StringComparison.OrdinalIgnoreCase))
+        if (!store.TryResolve(fileName, out var fullPath))
             return Results.NotFound();
 
-        if (!File.Exists(fullFilePath))
+        if (!File.Exists(fullPath))
             return Results.NotFound();
 
-        var stream = File.OpenRead(fullFilePath);
-        var contentType = contentTypeProvider.TryGetContentType(decodedFileName, out var mime) ? mime : "application/octet-stream";
-        return Results.File(stream, contentType, decodedFileName, enableRangeProcessing: true);
+        var stream = File.OpenRead(fullPath);
+        var contentType = contentTypeProvider.TryGetContentType(fileName, out var mime) ? mime : "application/octet-stream";
+        return Results.File(stream, contentType, fileName, enableRangeProcessing: true);
     }
     catch
     {
@@ -149,49 +143,25 @@ app.MapGet("/download/{fileName}", (string fileName) =>
 });
 
 // API endpoint to list all downloads
-app.MapGet("/api/downloads", () =>
+app.MapGet("/api/downloads", (IDownloadStore store) =>
 {
     try
     {
-        var files = Directory.GetFiles(downloadsPath)
-            .Select(f =>
-            {
-                var fi = new FileInfo(f);
-                return new
-                {
-                    name = fi.Name,
-                    size = fi.Length,
-                    modified = fi.LastWriteTime,
-                    downloadUrl = $"download/{Uri.EscapeDataString(fi.Name)}"
-                };
-            })
-            .OrderByDescending(f => f.modified)
-            .ToList();
-
-        return Results.Ok(files);
+        return Results.Ok(store.List());
     }
     catch
     {
-        return Results.Ok(new List<object>());
+        return Results.Ok(Array.Empty<DownloadFileInfo>());
     }
 });
 
 // API endpoint to delete a download
-app.MapDelete("/api/downloads/{fileName}", (string fileName) =>
+app.MapDelete("/api/downloads/{fileName}", (string fileName, IDownloadStore store) =>
 {
     try
     {
-        var decodedFileName = Uri.UnescapeDataString(fileName);
-        var filePath = Path.Combine(downloadsPath, decodedFileName);
-
-        // Security: ensure the file is within the downloads folder
-        var fullDownloadsPath = Path.GetFullPath(downloadsPath);
-        var fullFilePath = Path.GetFullPath(filePath);
-        if (!fullFilePath.StartsWith(fullDownloadsPath, StringComparison.OrdinalIgnoreCase))
+        if (!store.Delete(fileName))
             return Results.BadRequest();
-
-        if (File.Exists(fullFilePath))
-            File.Delete(fullFilePath);
 
         return Results.Ok();
     }
@@ -202,16 +172,11 @@ app.MapDelete("/api/downloads/{fileName}", (string fileName) =>
 });
 
 // API endpoint to delete all downloads
-app.MapDelete("/api/downloads", () =>
+app.MapDelete("/api/downloads", (IDownloadStore store) =>
 {
     try
     {
-        var files = Directory.GetFiles(downloadsPath);
-        foreach (var file in files)
-        {
-            if (File.Exists(file))
-                File.Delete(file);
-        }
+        store.DeleteAll();
         return Results.Ok();
     }
     catch

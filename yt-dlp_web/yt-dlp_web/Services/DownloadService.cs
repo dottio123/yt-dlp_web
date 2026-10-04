@@ -64,11 +64,10 @@ public class DownloadService : IDownloadService
     private static readonly Regex SpeedRegex = new(@"at\s+([\d\.]+\s*[KMGTP]?i?B/s|Unknown(?:\s*B/s)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex EtaRegex = new(@"ETA\s+([\d\:]+|Unknown)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    public DownloadService(ILoggingService logger, IWebHostEnvironment env, IConfiguration configuration)
+    public DownloadService(ILoggingService logger, IDownloadStore store, IConfiguration configuration)
     {
         _logger = logger;
-        _downloadsPath = Path.Combine(env.ContentRootPath, "config", "downloads");
-        Directory.CreateDirectory(_downloadsPath);
+        _downloadsPath = store.RootPath;
 
         // Read the configured Deno path (may be null/empty when not set)
         _denoPath = configuration["YtDlp:DenoPath"];

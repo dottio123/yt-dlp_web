@@ -165,7 +165,7 @@ These are the inputs most likely to hurt real users that the code paths above co
   public sealed class DownloadStore : IDownloadStore { public DownloadStore(string rootPath); } // creates the directory
   ```
 
-- [ ] **Step 1: Write the failing tests** (each test uses a fresh temp directory as the store root, deleted in `Dispose`):
+- [x] **Step 1: Write the failing tests** (each test uses a fresh temp directory as the store root, deleted in `Dispose`):
   ```csharp
   [Fact] TryResolve_PlainName_ReturnsPathInsideRoot            // "video.mp4" → true, fullPath == Path.Combine(root, "video.mp4")
   [Theory] [InlineData("")] [InlineData(" ")] [InlineData(".")] [InlineData("..")]
@@ -180,17 +180,17 @@ These are the inputs most likely to hurt real users that the code paths above co
   ```
   `"?"` is not a valid file-name character on Windows. Mark that case with `[Trait("os","linux")]`, or skip it with `if (OperatingSystem.IsWindows()) return;`.
 
-- [ ] **Step 2:** Run the tests. Expected: compile failure.
+- [x] **Step 2:** Run the tests. Expected: compile failure.
 
-- [ ] **Step 3: Implement `DownloadStore`.** `TryResolve` rejects null/whitespace, `"."`, `".."`, and any name where `Path.GetFileName(name) != name`. It then takes `Path.GetFullPath(Path.Combine(RootPath, name))` and requires `Path.GetDirectoryName(full)` to equal `RootPath` (`OrdinalIgnoreCase` on Windows, `Ordinal` otherwise). Catch exceptions from `GetFullPath` and return false.
+- [x] **Step 3: Implement `DownloadStore`.** `TryResolve` rejects null/whitespace, `"."`, `".."`, and any name where `Path.GetFileName(name) != name`. It then takes `Path.GetFullPath(Path.Combine(RootPath, name))` and requires `Path.GetDirectoryName(full)` to equal `RootPath` (`OrdinalIgnoreCase` on Windows, `Ordinal` otherwise). Catch exceptions from `GetFullPath` and return false.
 
-- [ ] **Step 4: Rewire `Program.cs`.** Register `builder.Services.AddSingleton<IDownloadStore>(new DownloadStore(Path.Combine(contentRoot, "config", "downloads")))`. Take the downloads path for `UseStaticFiles` from that store instance. Rewrite `GET /download/{fileName}`, `GET /api/downloads`, `DELETE /api/downloads/{fileName}` and `DELETE /api/downloads` to use the store, with no `Uri.UnescapeDataString`. Keep the existing status codes: 404 for invalid/missing on GET, 400 for an invalid name on DELETE, 200 otherwise. `GET /api/downloads` returns `store.List()` (serialises to the same camelCase shape).
+- [x] **Step 4: Rewire `Program.cs`.** Register `builder.Services.AddSingleton<IDownloadStore>(new DownloadStore(Path.Combine(contentRoot, "config", "downloads")))`. Take the downloads path for `UseStaticFiles` from that store instance. Rewrite `GET /download/{fileName}`, `GET /api/downloads`, `DELETE /api/downloads/{fileName}` and `DELETE /api/downloads` to use the store, with no `Uri.UnescapeDataString`. Keep the existing status codes: 404 for invalid/missing on GET, 400 for an invalid name on DELETE, 200 otherwise. `GET /api/downloads` returns `store.List()` (serialises to the same camelCase shape).
 
-- [ ] **Step 5:** `DownloadService` constructor takes `IDownloadStore store` instead of `IWebHostEnvironment` and uses `store.RootPath` as `_downloadsPath`.
+- [x] **Step 5:** `DownloadService` constructor takes `IDownloadStore store` instead of `IWebHostEnvironment` and uses `store.RootPath` as `_downloadsPath`.
 
-- [ ] **Step 6:** Run the tests and build. Expected: all pass, 0 errors.
+- [x] **Step 6:** Run the tests and build. Expected: all pass, 0 errors.
 
-- [ ] **Step 7:** Commit: `fix: single download store with strict path check (F10)`
+- [x] **Step 7:** Commit: `fix: single download store with strict path check (F10)`
 
 ---
 
