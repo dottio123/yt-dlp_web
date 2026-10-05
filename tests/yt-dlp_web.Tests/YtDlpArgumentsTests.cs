@@ -117,7 +117,26 @@ public class YtDlpArgumentsTests
 
         var subsIndex = args.IndexOf("--sub-langs");
         Assert.True(subsIndex >= 0);
-        Assert.Equal("en", args[subsIndex + 1]);
+        Assert.Equal("en.*", args[subsIndex + 1]);
+    }
+
+    [Theory]
+    [InlineData("en", "en.*")]
+    [InlineData("all", "all")]
+    public void Build_MapsSubtitleLanguages(string subLangs, string expected)
+    {
+        var req = new DownloadRequest
+        {
+            Url = "https://example.com/video",
+            DownloadSubs = true,
+            SubLangs = subLangs
+        };
+        Assert.Null(YtDlpArguments.Validate(req, out var uri));
+        var args = YtDlpArguments.Build(req, uri!, "/dl/%(title)s.%(ext)s", null);
+
+        var subsIndex = args.IndexOf("--sub-langs");
+        Assert.True(subsIndex >= 0);
+        Assert.Equal(expected, args[subsIndex + 1]);
     }
 
     [Fact]

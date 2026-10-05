@@ -82,7 +82,8 @@ public static partial class YtDlpArguments
         {
             args.Add("--write-subs");
             args.Add("--sub-langs");
-            args.Add(req.SubLangs ?? "en");
+            // "en" is a regex for yt-dlp, so match regional tracks such as en-US and en-GB too
+            args.Add(req.SubLangs == "all" ? "all" : "en.*");
         }
 
         if (req.IncludeThumbnail)
