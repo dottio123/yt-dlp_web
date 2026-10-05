@@ -1,6 +1,7 @@
 @page "/history"
 @rendermode InteractiveServer
-@inject HttpClient Http
+@using yt_dlp_web.Services
+@inject IDownloadStore Store
 @inject NavigationManager Nav
 @inject IJSRuntime JSRuntime
 
@@ -30,6 +31,26 @@
         </button>
     </div>
 </div>
+
+@if (!string.IsNullOrEmpty(actionError))
+{
+    <div class="modern-card p-3 mb-4 d-flex align-items-center justify-content-between gap-3" style="background-color: var(--accent-red-light); border: 1px solid rgba(255, 0, 51, 0.2);">
+        <div class="d-flex align-items-center gap-2" style="color: var(--accent-red);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span class="small fw-semibold">@actionError</span>
+        </div>
+        <button class="btn btn-ghost btn-sm p-1" @onclick="() => actionError = null" title="Dismiss">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+}
 
 @if (isLoading)
 {
@@ -74,7 +95,7 @@ else
                         <tr>
                             <td>
                                 <div class="d-flex align-items-center gap-2">
-                                    @if (IsAudioFile(file.Name))
+                                    @if (MediaFileTypes.IsAudio(file.Name))
                                     {
                                         <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(168, 85, 247, 0.15); color: #a855f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Audio File">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -84,7 +105,7 @@ else
                                             </svg>
                                         </div>
                                     }
-                                    else if (IsImageFile(file.Name))
+                                    else if (MediaFileTypes.IsImage(file.Name))
                                     {
                                         <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); color: #10b981; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Thumbnail Image">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -94,7 +115,7 @@ else
                                             </svg>
                                         </div>
                                     }
-                                    else if (IsSubtitleFile(file.Name))
+                                    else if (MediaFileTypes.IsSubtitle(file.Name))
                                     {
                                         <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(234, 179, 8, 0.15); color: #eab308; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Subtitles">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -128,7 +149,7 @@ else
                             </td>
                             <td class="text-end">
                                 <div class="d-inline-flex align-items-center gap-1">
-                                    @if (IsPlayableMedia(file.Name))
+                                    @if (MediaFileTypes.IsPlayable(file.Name))
                                     {
                                         <button class="btn btn-sm btn-secondary" @onclick="() => PlayMedia(file)" title="Preview Media">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -167,28 +188,34 @@ else
                   Title="@activeFile?.Name"
                   MediaUrl="@activeMediaUrl"
                   DownloadUrl="@activeDownloadUrl"
+                  SubtitleUrls="@activeSubtitleUrls"
                   OnClose="ClosePlayer" />
 
 @code {
-    private List<DownloadFile> downloads = new();
+    private List<DownloadFileInfo> downloads = new();
     private bool isLoading = true;
+    private string? actionError;
 
     // Player state
     private bool isPlayerOpen;
-    private DownloadFile? activeFile;
+    private DownloadFileInfo? activeFile;
     private string? activeMediaUrl;
     private string? activeDownloadUrl;
+    private IReadOnlyList<string>? activeSubtitleUrls;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await RefreshList();
+        RefreshList();
     }
 
-    private void PlayMedia(DownloadFile file)
+    private void PlayMedia(DownloadFileInfo file)
     {
         activeFile = file;
         activeMediaUrl = $"downloads/{Uri.EscapeDataString(file.Name)}";
         activeDownloadUrl = file.DownloadUrl;
+        activeSubtitleUrls = MediaFileTypes.PlayableSubtitlesFor(file.Name, downloads.Select(d => d.Name))
+            .Select(name => $"downloads/{Uri.EscapeDataString(name)}")
+            .ToList();
         isPlayerOpen = true;
     }
 
@@ -198,48 +225,19 @@ else
         activeFile = null;
         activeMediaUrl = null;
         activeDownloadUrl = null;
+        activeSubtitleUrls = null;
     }
 
-    private bool IsAudioFile(string name)
-    {
-        var ext = Path.GetExtension(name).ToLowerInvariant();
-        return ext is ".mp3" or ".m4a" or ".aac" or ".wav" or ".flac" or ".ogg" or ".opus";
-    }
-
-    private bool IsImageFile(string name)
-    {
-        var ext = Path.GetExtension(name).ToLowerInvariant();
-        return ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp";
-    }
-
-    private bool IsSubtitleFile(string name)
-    {
-        var ext = Path.GetExtension(name).ToLowerInvariant();
-        return ext is ".vtt" or ".srt" or ".ass" or ".ssa" or ".sub" or ".lrc";
-    }
-
-    private bool IsPlayableMedia(string name)
-    {
-        if (IsAudioFile(name)) return true;
-        var ext = Path.GetExtension(name).ToLowerInvariant();
-        return ext is ".mp4" or ".webm" or ".mkv" or ".mov" or ".avi" or ".flv" or ".m4v";
-    }
-
-    private async Task RefreshList()
+    private void RefreshList()
     {
         isLoading = true;
         try
         {
-            var resp = await Http.GetAsync("api/downloads");
-            if (resp.IsSuccessStatusCode)
-            {
-                var result = await resp.Content.ReadFromJsonAsync<List<DownloadFile>>();
-                downloads = result ?? new();
-            }
+            downloads = Store.List().ToList();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading downloads: {ex.Message}");
+            actionError = $"Error loading downloads: {ex.Message}";
         }
         finally
         {
@@ -252,17 +250,19 @@ else
         if (!await ConfirmDelete(fileName))
             return;
 
+        actionError = null;
         try
         {
-            var resp = await Http.DeleteAsync($"api/downloads/{Uri.EscapeDataString(fileName)}");
-            if (resp.IsSuccessStatusCode)
+            var deleted = Store.Delete(fileName);
+            if (!deleted)
             {
-                await RefreshList();
+                actionError = $"Could not delete {fileName}.";
             }
+            RefreshList();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error deleting file: {ex.Message}");
+            actionError = $"Error deleting file: {ex.Message}";
         }
     }
 
@@ -271,17 +271,15 @@ else
         if (!await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete all downloaded files?"))
             return;
 
+        actionError = null;
         try
         {
-            var resp = await Http.DeleteAsync("api/downloads");
-            if (resp.IsSuccessStatusCode)
-            {
-                await RefreshList();
-            }
+            Store.DeleteAll();
+            RefreshList();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error deleting all files: {ex.Message}");
+            actionError = $"Error deleting all files: {ex.Message}";
         }
     }
 
@@ -301,13 +299,5 @@ else
             len = len / 1024;
         }
         return $"{len:0.##} {sizes[order]}";
-    }
-
-    private class DownloadFile
-    {
-        public string Name { get; set; } = string.Empty;
-        public long Size { get; set; }
-        public DateTime Modified { get; set; }
-        public string DownloadUrl { get; set; } = string.Empty;
     }
 }

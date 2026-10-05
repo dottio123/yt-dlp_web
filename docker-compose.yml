@@ -6,9 +6,17 @@ services:
       dockerfile: yt-dlp_web/yt-dlp_web/Dockerfile
     image: yt-dlp-web:latest
     environment:
+      # Time zone for log timestamps and the nightly yt-dlp update, which runs at local midnight.
+      - TZ=${TZ:-UTC}
       - ASPNETCORE_ENVIRONMENT=Production
       - UPDATE_YTDLP=1
       - YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+      # Max yt-dlp downloads running at once; extra requests wait. 0 = no limit.
+      - YtDlp__MaxConcurrentDownloads=${MAX_CONCURRENT_DOWNLOADS:-4}
+      # Kill a download that runs longer than this many minutes.
+      - YtDlp__TimeoutMinutes=${DOWNLOAD_TIMEOUT_MINUTES:-180}
+      # Cancel an active download after a browser tab disconnects for longer than this many seconds.
+      - YtDlp__DisconnectGraceSeconds=${DISCONNECT_GRACE_SECONDS:-30}
     ports:
       # Map host port 7022 to the container's HTTP port (the app is listening on 8080 inside the container)
       - "7022:8080"

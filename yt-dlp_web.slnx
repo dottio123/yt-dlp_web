@@ -1,8 +1,12 @@
 <Solution>
-  <Project Path="yt-dlp_web/yt-dlp_web.Client/yt-dlp_web.Client.csproj"/>
-  <Project Path="yt-dlp_web/yt-dlp_web/yt-dlp_web.csproj"/>
+  <Folder Name="/tests/">
+    <Project Path="tests/yt-dlp_web.Tests/yt-dlp_web.Tests.csproj" />
+  </Folder>
+  <Folder Name="/yt-dlp_web/" />
+  <Project Path="yt-dlp_web/yt-dlp_web.Client/yt-dlp_web.Client.csproj" />
+  <Project Path="yt-dlp_web/yt-dlp_web/yt-dlp_web.csproj" />
   <Folder Name="/Solution Items/">
-    <File Path="yt-dlp_web/yt-dlp_web/bin/Debug/net8.0/tools/ffmpeg.exe"/>
-    <File Path="yt-dlp_web/yt-dlp_web/bin/Debug/net8.0/tools/yt-dlp.exe"/>
+    <File Path="yt-dlp_web/yt-dlp_web/bin/Debug/net8.0/tools/ffmpeg.exe" />
+    <File Path="yt-dlp_web/yt-dlp_web/bin/Debug/net8.0/tools/yt-dlp.exe" />
   </Folder>
 </Solution>

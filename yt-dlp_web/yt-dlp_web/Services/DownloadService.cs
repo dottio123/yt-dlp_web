@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 
 namespace yt_dlp_web.Services;
 
@@ -19,6 +19,7 @@ public class DownloadRequest
 {
     public string? Url { get; set; }
     public string? Format { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
     public string? ClientIp { get; set; }
     public bool ExtractAudio { get; set; }
     public string? AudioFormat { get; set; }
@@ -46,7 +47,7 @@ public class DownloadResult
 
 public interface IDownloadService
 {
-    Task<DownloadResult> DownloadAsync(DownloadRequest request, Action<DownloadProgressUpdate>? onProgress = null);
+    Task<DownloadResult> DownloadAsync(DownloadRequest request, Action<DownloadProgressUpdate>? onProgress = null, CancellationToken cancellationToken = default);
 }
 
 public class DownloadService : IDownloadService
@@ -54,472 +55,316 @@ public class DownloadService : IDownloadService
     private readonly ILoggingService _logger;
     private readonly string _downloadsPath;
     private readonly string? _denoPath;
+    private readonly YtDlpOptions _options;
+    private readonly DownloadLimiter _limiter;
 
-    private static readonly Regex AnsiRegex = new(@"\x1B\[[^@-~]*[@-~]", RegexOptions.Compiled);
-    private static readonly Regex ProgressTemplateRegex = new(
-        @"^download-progress:\s*([\d\.]+)%\|([^\|]*)\|([^\|]*)\|([^\|\r\n]*)",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex PercentRegex = new(@"([\d\.]+)%", RegexOptions.Compiled);
-    private static readonly Regex TotalSizeRegex = new(@"of\s+~?\s*([\d\.]+\s*[KMGTP]?i?B)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex SpeedRegex = new(@"at\s+([\d\.]+\s*[KMGTP]?i?B/s|Unknown(?:\s*B/s)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex EtaRegex = new(@"ETA\s+([\d\:]+|Unknown)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    public DownloadService(ILoggingService logger, IWebHostEnvironment env, IConfiguration configuration)
+    public DownloadService(ILoggingService logger, IDownloadStore store, IOptions<YtDlpOptions> options, DownloadLimiter limiter)
     {
         _logger = logger;
-        _downloadsPath = Path.Combine(env.ContentRootPath, "config", "downloads");
-        Directory.CreateDirectory(_downloadsPath);
-
-        // Read the configured Deno path (may be null/empty when not set)
-        _denoPath = configuration["YtDlp:DenoPath"];
+        _downloadsPath = store.RootPath;
+        _options = options.Value;
+        _denoPath = _options.DenoPath;
+        _limiter = limiter;
     }
 
-    public async Task<DownloadResult> DownloadAsync(DownloadRequest req, Action<DownloadProgressUpdate>? onProgress = null)
+    public async Task<DownloadResult> DownloadAsync(
+        DownloadRequest req,
+        Action<DownloadProgressUpdate>? onProgress = null,
+        CancellationToken cancellationToken = default)
     {
         var clientIp = req.ClientIp ?? "Unknown";
 
-        if (string.IsNullOrWhiteSpace(req.Url))
+        var validationError = YtDlpArguments.Validate(req, out var uri);
+        if (validationError != null || uri == null)
         {
-            var msg = "Missing url";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
+            _logger.LogError(validationError ?? "Invalid request", clientIp, "Download");
+            return new DownloadResult { Success = false, ErrorMessage = validationError };
         }
 
-        if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_options.TimeoutMinutes > 0)
         {
-            var msg = "Invalid url";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
+            linkedCts.CancelAfter(TimeSpan.FromMinutes(_options.TimeoutMinutes));
         }
 
-        onProgress?.Invoke(new DownloadProgressUpdate
+        if (_limiter.IsSaturated)
         {
-            Percent = 0,
-            StatusMessage = "Starting download process...",
-            IsIndeterminate = true
-        });
-
-        // Create output template with video title and timestamp
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var outTemplate = Path.Combine(_downloadsPath, $"%(title)s_{timestamp}.%(ext)s");
-
-        // Build yt-dlp arguments - enforce progress reporting, newlines, and no ANSI codes
-        var args = new List<string>
-        {
-            "--no-playlist",
-            "--progress",
-            "--newline",
-            "--no-colors",
-            "--progress-template",
-            "download-progress:%(progress._percent_str)s|%(progress._total_bytes_str|progress._total_bytes_estimate_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
-            "-o",
-            outTemplate
-        };
-
-        if (req.ExtractAudio)
-        {
-            args.Add("-x");
-            args.Add("--audio-format");
-            args.Add(req.AudioFormat ?? "mp3");
-        }
-
-        if (req.DownloadSubs)
-        {
-            args.Add("--write-subs");
-            args.Add("--sub-langs");
-            args.Add(req.SubLangs ?? "en");
-        }
-
-        if (req.IncludeThumbnail)
-        {
-            args.Add("--write-thumbnail");
-        }
-
-        if (!string.IsNullOrWhiteSpace(req.Format))
-        {
-            args.Insert(0, "-f");
-            args.Insert(1, req.Format);
-        }
-
-        args.Add(req.Url);
-
-        // Inject --js-runtimes when a valid Deno path is configured.
-        if (!string.IsNullOrWhiteSpace(_denoPath) && File.Exists(_denoPath))
-        {
-            args.Insert(0, "--js-runtimes");
-            args.Insert(1, $"deno:{_denoPath}");
-        }
-
-        var ytDlpPath = "/usr/local/bin/yt-dlp";
-        var psi = new ProcessStartInfo
-        {
-            FileName = ytDlpPath,
-            Arguments = string.Join(' ', args.Select(a => a.Contains(' ') ? '"' + a + '"' : a)),
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-
-        if (!string.IsNullOrWhiteSpace(_denoPath))
-        {
-            var denoDir = Path.GetDirectoryName(_denoPath);
-            if (!string.IsNullOrEmpty(denoDir))
+            onProgress?.Invoke(new DownloadProgressUpdate
             {
-                var existingPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                if (!existingPath.Contains(denoDir, StringComparison.OrdinalIgnoreCase))
-                    psi.Environment["PATH"] = $"{denoDir};{existingPath}";
-            }
+                Percent = 0,
+                StatusMessage = "Waiting for another download to finish...",
+                IsIndeterminate = true
+            });
         }
 
-        using var proc = Process.Start(psi);
-        if (proc is null)
+        bool acquired = false;
+        try
         {
-            var msg = "Failed to start yt-dlp process";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
+            await _limiter.WaitAsync(linkedCts.Token);
+            acquired = true;
+        }
+        catch (OperationCanceledException)
+        {
+            bool isTimeout = !cancellationToken.IsCancellationRequested && linkedCts.IsCancellationRequested;
+            var cancelMsg = isTimeout ? $"Download timed out after {_options.TimeoutMinutes} minutes" : "Download cancelled";
+            _logger.LogError(cancelMsg, clientIp, "Download");
+            return new DownloadResult { Success = false, ErrorMessage = cancelMsg };
         }
 
-        var stdOutBuilder = new StringBuilder();
-        var stdErrBuilder = new StringBuilder();
-        var trackingState = new ProgressTrackingState();
-
-        var stdOutTask = Task.Run(async () =>
+        try
         {
-            try
+            onProgress?.Invoke(new DownloadProgressUpdate
             {
-                while (await proc.StandardOutput.ReadLineAsync() is { } line)
-                {
-                    stdOutBuilder.AppendLine(line);
-                    ParseOutputLine(line, onProgress, trackingState);
-                }
-            }
-            catch { /* Ignore stream reading errors on exit */ }
-        });
+                Percent = 0,
+                StatusMessage = "Starting download process...",
+                IsIndeterminate = true
+            });
 
-        var stdErrTask = Task.Run(async () =>
-        {
-            try
+            // Create output template with video title and unique job token
+            var jobToken = YtDlpArguments.NewJobToken();
+            var outTemplate = YtDlpArguments.OutputTemplate(_downloadsPath, jobToken);
+
+            var denoPath = !string.IsNullOrWhiteSpace(_denoPath) && File.Exists(_denoPath) ? _denoPath : null;
+            var args = YtDlpArguments.Build(req, uri, outTemplate, denoPath);
+
+            var ytDlpPath = _options.ResolveExecutablePath();
+            var psi = new ProcessStartInfo
             {
-                while (await proc.StandardError.ReadLineAsync() is { } line)
-                {
-                    stdErrBuilder.AppendLine(line);
-                    ParseOutputLine(line, onProgress, trackingState);
-                }
-            }
-            catch { /* Ignore stream reading errors on exit */ }
-        });
-
-        await Task.WhenAll(stdOutTask, stdErrTask, proc.WaitForExitAsync());
-
-        var stdOut = stdOutBuilder.ToString();
-        var stdErr = stdErrBuilder.ToString();
-
-        if (proc.ExitCode != 0)
-        {
-            var msg = $"yt-dlp failed: {stdErr}";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = $"{stdErr}\n{stdOut}" };
-        }
-
-        // Find downloaded files by matching the embedded timestamp
-        var timestampPattern = $"_{timestamp}";
-        var downloadedFiles = Directory.GetFiles(_downloadsPath)
-            .Where(f => Path.GetFileName(f).Contains(timestampPattern, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        var imageExts = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-        var subExts = new[] { ".vtt", ".srt", ".ass", ".ssa" };
-
-        var matchingFile = downloadedFiles
-            .Where(f => !imageExts.Contains(Path.GetExtension(f).ToLowerInvariant()) &&
-                        !subExts.Contains(Path.GetExtension(f).ToLowerInvariant()))
-            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
-            .FirstOrDefault();
-
-        var thumbnailFilePath = downloadedFiles
-            .Where(f => imageExts.Contains(Path.GetExtension(f).ToLowerInvariant()))
-            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
-            .FirstOrDefault();
-
-        var subtitleFiles = downloadedFiles
-            .Where(f => subExts.Contains(Path.GetExtension(f).ToLowerInvariant()))
-            .OrderByDescending(f => new FileInfo(f).Name)
-            .ToList();
-
-        if (string.IsNullOrEmpty(matchingFile))
-        {
-            var msg = $"Could not find downloaded file with timestamp {timestamp}. Files in folder: {string.Join(" | ", downloadedFiles.Select(f => Path.GetFileName(f)))}";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
-        }
-
-        // Verify file exists (with brief retry)
-        for (int attempt = 0; attempt < 5; attempt++)
-        {
-            if (File.Exists(matchingFile)) break;
-            await Task.Delay(100);
-        }
-
-        if (!File.Exists(matchingFile))
-        {
-            var filesInDir = string.Join(" | ", Directory.GetFiles(_downloadsPath).Select(f => Path.GetFileName(f)));
-            var msg = $"File path returned by yt-dlp does not exist: {matchingFile}. Files in downloads folder: {filesInDir}";
-            _logger.LogError(msg, clientIp, "Download");
-            return new DownloadResult { Success = false, ErrorMessage = msg };
-        }
-
-        var fileName = Path.GetFileName(matchingFile);
-        var publicUrl = $"downloads/{Uri.EscapeDataString(fileName)}";
-
-        // Handle thumbnail
-        string? thumbFileName = null;
-        string? thumbPublicUrl = null;
-        if (!string.IsNullOrEmpty(thumbnailFilePath) && File.Exists(thumbnailFilePath))
-        {
-            thumbFileName = Path.GetFileName(thumbnailFilePath);
-            thumbPublicUrl = $"downloads/{Uri.EscapeDataString(thumbFileName)}";
-        }
-
-        // Handle subtitles
-        var subtitlesList = subtitleFiles.Select(f =>
-        {
-            var subName = Path.GetFileName(f);
-            return new DownloadFileResult
-            {
-                File = subName,
-                Url = $"downloads/{Uri.EscapeDataString(subName)}"
+                FileName = ytDlpPath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
             };
-        }).ToList();
 
-        _logger.LogDownload(fileName, clientIp);
-
-        return new DownloadResult
-        {
-            Success = true,
-            Url = publicUrl,
-            File = fileName,
-            ThumbnailUrl = thumbPublicUrl,
-            ThumbnailFile = thumbFileName,
-            Subtitles = subtitlesList
-        };
-    }
-
-    private void ParseOutputLine(string line, Action<DownloadProgressUpdate>? onProgress, ProgressTrackingState state)
-    {
-        if (onProgress == null || string.IsNullOrWhiteSpace(line)) return;
-
-        var clean = AnsiRegex.Replace(line, "").Trim();
-        if (string.IsNullOrWhiteSpace(clean)) return;
-
-        var now = DateTime.UtcNow;
-
-        // 1. Check custom progress template: download-progress:percent%|total|speed|eta
-        var templateMatch = ProgressTemplateRegex.Match(clean);
-        if (templateMatch.Success)
-        {
-            if (double.TryParse(templateMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var percent))
+            foreach (var arg in args)
             {
-                var total = templateMatch.Groups[2].Value.Trim();
-                var speed = templateMatch.Groups[3].Value.Trim();
-                var eta = templateMatch.Groups[4].Value.Trim();
-
-                if (string.Equals(speed, "NA", StringComparison.OrdinalIgnoreCase) || speed.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)) speed = null;
-                if (string.Equals(eta, "NA", StringComparison.OrdinalIgnoreCase) || eta.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)) eta = null;
-                if (string.Equals(total, "NA", StringComparison.OrdinalIgnoreCase) || total.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)) total = null;
-
-                // Smooth speed and ETA updates to ~1.2 second intervals to eliminate rapid fluttering
-                if (percent >= 100.0)
-                {
-                    state.StableEta = "00:00";
-                }
-                else if ((now - state.LastStatsTime).TotalMilliseconds >= 1200 || state.StableSpeed == null)
-                {
-                    if (!string.IsNullOrEmpty(speed)) state.StableSpeed = speed;
-                    if (!string.IsNullOrEmpty(eta)) state.StableEta = eta;
-                    state.LastStatsTime = now;
-                }
-
-                string? downloaded = null;
-                if (!string.IsNullOrEmpty(total))
-                {
-                    var m = Regex.Match(total, @"([\d\.]+)\s*(\w+)");
-                    if (m.Success && double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var tVal))
-                    {
-                        downloaded = $"{tVal * (percent / 100.0):F1} {m.Groups[2].Value}";
-                    }
-                }
-
-                // Throttle progress dispatches to prevent UI thrashing while keeping bar animation smooth
-                bool shouldEmit = percent >= 100.0 ||
-                                  state.LastReportedPercent < 0 ||
-                                  Math.Abs(percent - state.LastReportedPercent) >= 0.2 ||
-                                  (now - state.LastEmitTime).TotalMilliseconds >= 250;
-
-                if (shouldEmit)
-                {
-                    state.LastReportedPercent = percent;
-                    state.LastEmitTime = now;
-
-                    onProgress.Invoke(new DownloadProgressUpdate
-                    {
-                        Percent = Math.Clamp(percent, 0.0, 100.0),
-                        Speed = state.StableSpeed,
-                        Eta = state.StableEta,
-                        DownloadedSize = downloaded,
-                        TotalSize = total,
-                        StatusMessage = percent >= 100.0 ? "Download complete, processing..." : "Downloading media...",
-                        IsIndeterminate = false
-                    });
-                }
-                return;
+                psi.ArgumentList.Add(arg);
             }
-        }
 
-        // 2. Standard [download] line fallback
-        if (clean.StartsWith("[download]", StringComparison.OrdinalIgnoreCase))
-        {
-            if (clean.Contains("Destination:", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(_denoPath))
             {
-                onProgress.Invoke(new DownloadProgressUpdate
+                var denoDir = Path.GetDirectoryName(_denoPath);
+                if (!string.IsNullOrEmpty(denoDir))
                 {
-                    Percent = 10,
-                    StatusMessage = "Starting media download...",
-                    IsIndeterminate = false
+                    var existingPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                    if (!existingPath.Contains(denoDir, StringComparison.OrdinalIgnoreCase))
+                        psi.Environment["PATH"] = $"{denoDir}{Path.PathSeparator}{existingPath}";
+                }
+            }
+
+            Process proc;
+            try
+            {
+                var started = Process.Start(psi);
+                if (started is null)
+                {
+                    var msg = "Failed to start yt-dlp process";
+                    _logger.LogError(msg, clientIp, "Download");
+                    return new DownloadResult { Success = false, ErrorMessage = msg };
+                }
+                proc = started;
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                var msg = $"yt-dlp could not be started at {ytDlpPath}: {ex.Message}";
+                _logger.LogError(msg, clientIp, "Download");
+                return new DownloadResult { Success = false, ErrorMessage = msg };
+            }
+
+            using (proc)
+            {
+                var stdOutBuilder = new StringBuilder();
+                var stdErrBuilder = new StringBuilder();
+                var progressParser = new ProgressParser();
+                var progressLock = new object();
+
+                var stdOutTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (await proc.StandardOutput.ReadLineAsync() is { } line)
+                        {
+                            stdOutBuilder.AppendLine(line);
+                            DownloadProgressUpdate? update;
+                            lock (progressLock)
+                            {
+                                update = progressParser.Parse(line, DateTime.UtcNow);
+                            }
+                            if (update != null)
+                            {
+                                onProgress?.Invoke(update);
+                            }
+                        }
+                    }
+                    catch { /* Ignore stream reading errors on exit */ }
                 });
-                return;
-            }
 
-            var pMatch = PercentRegex.Match(clean);
-            if (pMatch.Success && double.TryParse(pMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var percent))
-            {
-                var totMatch = TotalSizeRegex.Match(clean);
-                var spMatch = SpeedRegex.Match(clean);
-                var etMatch = EtaRegex.Match(clean);
-
-                string? totalSize = totMatch.Success ? totMatch.Groups[1].Value.Trim() : null;
-                string? speed = spMatch.Success ? spMatch.Groups[1].Value.Trim() : null;
-                string? eta = etMatch.Success ? etMatch.Groups[1].Value.Trim() : null;
-
-                if (speed != null && (string.Equals(speed, "NA", StringComparison.OrdinalIgnoreCase) || speed.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase))) speed = null;
-                if (eta != null && (string.Equals(eta, "NA", StringComparison.OrdinalIgnoreCase) || eta.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase))) eta = null;
-
-                if (percent >= 100.0)
+                var stdErrTask = Task.Run(async () =>
                 {
-                    state.StableEta = "00:00";
-                }
-                else if ((now - state.LastStatsTime).TotalMilliseconds >= 1200 || state.StableSpeed == null)
-                {
-                    if (!string.IsNullOrEmpty(speed)) state.StableSpeed = speed;
-                    if (!string.IsNullOrEmpty(eta)) state.StableEta = eta;
-                    state.LastStatsTime = now;
-                }
-
-                string? downloadedSize = null;
-                if (!string.IsNullOrEmpty(totalSize))
-                {
-                    var sizeNumMatch = Regex.Match(totalSize, @"([\d\.]+)\s*(\w+)");
-                    if (sizeNumMatch.Success && double.TryParse(sizeNumMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var totalVal))
+                    try
                     {
-                        var downloadedVal = totalVal * (percent / 100.0);
-                        downloadedSize = $"{downloadedVal:F1} {sizeNumMatch.Groups[2].Value}";
+                        while (await proc.StandardError.ReadLineAsync() is { } line)
+                        {
+                            stdErrBuilder.AppendLine(line);
+                            DownloadProgressUpdate? update;
+                            lock (progressLock)
+                            {
+                                update = progressParser.Parse(line, DateTime.UtcNow);
+                            }
+                            if (update != null)
+                            {
+                                onProgress?.Invoke(update);
+                            }
+                        }
                     }
-                }
+                    catch { /* Ignore stream reading errors on exit */ }
+                });
 
-                bool shouldEmit = percent >= 100.0 ||
-                                  state.LastReportedPercent < 0 ||
-                                  Math.Abs(percent - state.LastReportedPercent) >= 0.2 ||
-                                  (now - state.LastEmitTime).TotalMilliseconds >= 250;
-
-                if (shouldEmit)
+                try
                 {
-                    state.LastReportedPercent = percent;
-                    state.LastEmitTime = now;
-
-                    onProgress.Invoke(new DownloadProgressUpdate
-                    {
-                        Percent = Math.Clamp(percent, 0.0, 100.0),
-                        Speed = state.StableSpeed,
-                        Eta = state.StableEta,
-                        DownloadedSize = downloadedSize,
-                        TotalSize = totalSize,
-                        StatusMessage = percent >= 100.0 ? "Download complete, processing..." : "Downloading media...",
-                        IsIndeterminate = false
-                    });
+                    await proc.WaitForExitAsync(linkedCts.Token);
+                    await Task.WhenAll(stdOutTask, stdErrTask);
                 }
-                return;
+                catch (OperationCanceledException)
+                {
+                    try
+                    {
+                        proc.Kill(entireProcessTree: true);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+
+                    await proc.WaitForExitAsync(CancellationToken.None);
+                    await Task.WhenAll(stdOutTask, stdErrTask);
+
+                    // Delete only this job's token-matching files including partials
+                    var tokenPattern = $"_{jobToken}.";
+                    try
+                    {
+                        var filesToDelete = Directory.GetFiles(_downloadsPath)
+                            .Where(f => Path.GetFileName(f).Contains(tokenPattern, StringComparison.Ordinal));
+                        foreach (var f in filesToDelete)
+                        {
+                            try
+                            {
+                                File.Delete(f);
+                            }
+                            catch
+                            {
+                            }
+                        }
+                    }
+                    catch
+                    {
+                    }
+
+                    bool isTimeout = !cancellationToken.IsCancellationRequested && linkedCts.IsCancellationRequested;
+                    var cancelMsg = isTimeout ? $"Download timed out after {_options.TimeoutMinutes} minutes" : "Download cancelled";
+                    _logger.LogError(cancelMsg, clientIp, "Download");
+                    return new DownloadResult { Success = false, ErrorMessage = cancelMsg };
+                }
+
+                var stdOut = stdOutBuilder.ToString();
+                var stdErr = stdErrBuilder.ToString();
+
+                if (proc.ExitCode != 0)
+                {
+                    if (stdOut.Contains("does not pass filter") || stdErr.Contains("does not pass filter"))
+                    {
+                        var liveMsg = "Live streams are not supported";
+                        _logger.LogError(liveMsg, clientIp, "Download");
+                        return new DownloadResult { Success = false, ErrorMessage = liveMsg };
+                    }
+
+                    var msg = $"yt-dlp failed: {stdErr}";
+                    _logger.LogError(msg, clientIp, "Download");
+                    return new DownloadResult { Success = false, ErrorMessage = $"{stdErr}\n{stdOut}" };
+                }
+
+                // Find downloaded files by matching the embedded job token
+                var located = DownloadOutputLocator.Find(_downloadsPath, jobToken);
+                var matchingFile = located.MediaPath;
+                var thumbnailFilePath = located.ThumbnailPath;
+                var subtitleFiles = located.SubtitlePaths;
+
+                if (string.IsNullOrEmpty(matchingFile))
+                {
+                    if (stdOut.Contains("does not pass filter") || stdErr.Contains("does not pass filter"))
+                    {
+                        var liveMsg = "Live streams are not supported";
+                        _logger.LogError(liveMsg, clientIp, "Download");
+                        return new DownloadResult { Success = false, ErrorMessage = liveMsg };
+                    }
+
+                    var tokenPattern = $"_{jobToken}.";
+                    var filesInFolder = Directory.GetFiles(_downloadsPath)
+                        .Where(f => Path.GetFileName(f).Contains(tokenPattern, StringComparison.Ordinal))
+                        .Select(f => Path.GetFileName(f));
+                    var msg = $"Could not find downloaded file with job token {jobToken}. Files in folder: {string.Join(" | ", filesInFolder)}";
+                    _logger.LogError(msg, clientIp, "Download");
+                    return new DownloadResult { Success = false, ErrorMessage = msg };
+                }
+
+                // Verify file exists (with brief retry)
+                for (int attempt = 0; attempt < 5; attempt++)
+                {
+                    if (File.Exists(matchingFile)) break;
+                    await Task.Delay(100);
+                }
+
+                if (!File.Exists(matchingFile))
+                {
+                    var filesInDir = string.Join(" | ", Directory.GetFiles(_downloadsPath).Select(f => Path.GetFileName(f)));
+                    var msg = $"File path returned by yt-dlp does not exist: {matchingFile}. Files in downloads folder: {filesInDir}";
+                    _logger.LogError(msg, clientIp, "Download");
+                    return new DownloadResult { Success = false, ErrorMessage = msg };
+                }
+
+                var fileName = Path.GetFileName(matchingFile);
+                var publicUrl = $"downloads/{Uri.EscapeDataString(fileName)}";
+
+                // Handle thumbnail
+                string? thumbFileName = null;
+                string? thumbPublicUrl = null;
+                if (!string.IsNullOrEmpty(thumbnailFilePath) && File.Exists(thumbnailFilePath))
+                {
+                    thumbFileName = Path.GetFileName(thumbnailFilePath);
+                    thumbPublicUrl = $"downloads/{Uri.EscapeDataString(thumbFileName)}";
+                }
+
+                // Handle subtitles
+                var subtitlesList = subtitleFiles.Select(f =>
+                {
+                    var subName = Path.GetFileName(f);
+                    return new DownloadFileResult
+                    {
+                        File = subName,
+                        Url = $"downloads/{Uri.EscapeDataString(subName)}"
+                    };
+                }).ToList();
+
+                _logger.LogDownload(fileName, clientIp);
+
+                return new DownloadResult
+                {
+                    Success = true,
+                    Url = publicUrl,
+                    File = fileName,
+                    ThumbnailUrl = thumbPublicUrl,
+                    ThumbnailFile = thumbFileName,
+                    Subtitles = subtitlesList
+                };
             }
         }
-
-        // 3. Stage transitions
-        if (clean.StartsWith("[youtube]", StringComparison.OrdinalIgnoreCase) ||
-            clean.Contains("Extracting URL", StringComparison.OrdinalIgnoreCase) ||
-            clean.Contains("Downloading webpage", StringComparison.OrdinalIgnoreCase))
+        finally
         {
-            onProgress.Invoke(new DownloadProgressUpdate
+            if (acquired)
             {
-                Percent = 5,
-                StatusMessage = "Fetching video information...",
-                IsIndeterminate = false
-            });
+                _limiter.Release();
+            }
         }
-        else if (clean.StartsWith("[info]", StringComparison.OrdinalIgnoreCase) ||
-                 clean.Contains("Downloading 1 format", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 8,
-                StatusMessage = "Retrieving media stream...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.StartsWith("[ExtractAudio]", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 92,
-                StatusMessage = "Extracting audio track...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.StartsWith("[Merger]", StringComparison.OrdinalIgnoreCase) ||
-                 clean.Contains("Merging formats", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 95,
-                StatusMessage = "Merging video and audio with FFmpeg...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.StartsWith("[Fixup", StringComparison.OrdinalIgnoreCase) ||
-                 clean.StartsWith("[VideoConvertor]", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 97,
-                StatusMessage = "Finalizing media file...",
-                IsIndeterminate = false
-            });
-        }
-        else if (clean.Contains("Writing video subtitles", StringComparison.OrdinalIgnoreCase) ||
-                 clean.Contains("Writing video thumbnail", StringComparison.OrdinalIgnoreCase))
-        {
-            onProgress.Invoke(new DownloadProgressUpdate
-            {
-                Percent = 98,
-                StatusMessage = "Saving subtitles & thumbnail...",
-                IsIndeterminate = false
-            });
-        }
-    }
-
-    private class ProgressTrackingState
-    {
-        public DateTime LastStatsTime = DateTime.MinValue;
-        public string? StableSpeed;
-        public string? StableEta;
-        public double LastReportedPercent = -1;
-        public DateTime LastEmitTime = DateTime.MinValue;
     }
 }
+
