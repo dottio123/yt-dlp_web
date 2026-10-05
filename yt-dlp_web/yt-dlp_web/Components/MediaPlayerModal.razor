@@ -54,11 +54,14 @@
                 else
                 {
                     <video controls autoplay playsinline src="@MediaUrl" preload="metadata">
-                        @if (!string.IsNullOrEmpty(SubtitleUrl))
+                        @if (SubtitleUrls is not null)
                         {
-                            var subFileName = Uri.UnescapeDataString(Path.GetFileName(SubtitleUrl));
-                            var subLang = MediaFileTypes.SubtitleLanguage(subFileName);
-                            <track src="@SubtitleUrl" kind="subtitles" srclang="@(subLang ?? "und")" label="@(subLang ?? "Subtitles")" default />
+                            for (var i = 0; i < SubtitleUrls.Count; i++)
+                            {
+                                var subUrl = SubtitleUrls[i];
+                                var subLang = MediaFileTypes.SubtitleLanguage(Uri.UnescapeDataString(Path.GetFileName(subUrl)));
+                                <track src="@subUrl" kind="subtitles" srclang="@(subLang ?? "und")" label="@(subLang ?? "Subtitles")" default="@(i == 0)" />
+                            }
                         }
                         Your browser does not support the video element.
                     </video>
@@ -93,7 +96,7 @@
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? MediaUrl { get; set; }
     [Parameter] public string? DownloadUrl { get; set; }
-    [Parameter] public string? SubtitleUrl { get; set; }
+    [Parameter] public IReadOnlyList<string>? SubtitleUrls { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
     private bool IsAudio => MediaFileTypes.IsAudio(MediaUrl ?? string.Empty);

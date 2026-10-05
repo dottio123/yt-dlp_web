@@ -327,10 +327,11 @@
             else
             {
                 <video controls playsinline preload="metadata" src="@resultUrl">
-                    @if (resultSubtitles.Count > 0)
+                    @{ var playableSubs = resultSubtitles.Where(s => string.Equals(Path.GetExtension(s.file), ".vtt", StringComparison.OrdinalIgnoreCase)).ToList(); }
+                    @for (var i = 0; i < playableSubs.Count; i++)
                     {
-                        var subLang = MediaFileTypes.SubtitleLanguage(resultSubtitles[0].file ?? string.Empty);
-                        <track src="@resultSubtitles[0].url" kind="subtitles" srclang="@(subLang ?? "und")" label="@(subLang ?? "Subtitles")" default />
+                        var subLang = MediaFileTypes.SubtitleLanguage(playableSubs[i].file ?? string.Empty);
+                        <track src="@playableSubs[i].url" kind="subtitles" srclang="@(subLang ?? "und")" label="@(subLang ?? "Subtitles")" default="@(i == 0)" />
                     }
                     Your browser does not support the video element.
                 </video>

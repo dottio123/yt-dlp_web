@@ -489,3 +489,4 @@ These are the inputs most likely to hurt real users that the code paths above co
 - [x] `docs: correct DenoPath, job token and key notes` — `DenoPath` must be the full path to the `deno` executable; job token format; key and path rules in AGENTS.md.
 - [x] `fix: match regional English subtitle tracks` — "English Only" now passes `--sub-langs en.*` so `en-US`/`en-GB`/`en-AU` tracks download (YouTube `NEDFUjqA1s8` had no plain `en`).
 - [x] `fix: tell yt-dlp to use Node.js as its JavaScript runtime` — `--js-runtimes node` unless `YtDlp:DenoPath` is set; yt-dlp only enables Deno by default.
+- [x] `fix: show subtitles in the History player` — History passes the video's `<name>.<lang>.vtt` tracks to the player (it never set `SubtitleUrl`); both players now offer every WebVTT track, first one on by default.

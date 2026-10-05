@@ -188,6 +188,7 @@ else
                   Title="@activeFile?.Name"
                   MediaUrl="@activeMediaUrl"
                   DownloadUrl="@activeDownloadUrl"
+                  SubtitleUrls="@activeSubtitleUrls"
                   OnClose="ClosePlayer" />
 
 @code {
@@ -200,6 +201,7 @@ else
     private DownloadFileInfo? activeFile;
     private string? activeMediaUrl;
     private string? activeDownloadUrl;
+    private IReadOnlyList<string>? activeSubtitleUrls;
 
     protected override void OnInitialized()
     {
@@ -211,6 +213,9 @@ else
         activeFile = file;
         activeMediaUrl = $"downloads/{Uri.EscapeDataString(file.Name)}";
         activeDownloadUrl = file.DownloadUrl;
+        activeSubtitleUrls = MediaFileTypes.PlayableSubtitlesFor(file.Name, downloads.Select(d => d.Name))
+            .Select(name => $"downloads/{Uri.EscapeDataString(name)}")
+            .ToList();
         isPlayerOpen = true;
     }
 
@@ -220,6 +225,7 @@ else
         activeFile = null;
         activeMediaUrl = null;
         activeDownloadUrl = null;
+        activeSubtitleUrls = null;
     }
 
     private void RefreshList()

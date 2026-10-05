@@ -30,4 +30,24 @@ public class MediaFileTypesTests
     {
         Assert.Equal(expected, MediaFileTypes.SubtitleLanguage(name));
     }
+
+    [Fact]
+    public void PlayableSubtitlesFor_ReturnsThisVideosVttTracksInOrder()
+    {
+        var files = new[]
+        {
+            "A_tok.mp4", "A_tok.en-US.vtt", "A_tok.en-AU.vtt", "A_tok.en.srt", "A_tok.webp",
+            "B_tok.en.vtt", "A_tok.extra.en.vtt", "A_tok2.en.vtt"
+        };
+
+        var subs = MediaFileTypes.PlayableSubtitlesFor("A_tok.mp4", files);
+
+        Assert.Equal(new[] { "A_tok.en-AU.vtt", "A_tok.en-US.vtt" }, subs);
+    }
+
+    [Fact]
+    public void PlayableSubtitlesFor_NoTracks_ReturnsEmpty()
+    {
+        Assert.Empty(MediaFileTypes.PlayableSubtitlesFor("A_tok.mp4", new[] { "A_tok.mp4", "A_tok.webp" }));
+    }
 }

@@ -79,4 +79,17 @@ public static partial class MediaFileTypes
         var langCandidate = nameWithoutExt.Substring(lastDot + 1);
         return SubtitleLanguageRegex().IsMatch(langCandidate) ? langCandidate : null;
     }
+
+    // Subtitle tracks yt-dlp wrote next to this media file ("<name>.<lang>.vtt"), ordered by name.
+    // Only WebVTT, because that is the only format the browser's <track> element plays.
+    public static IReadOnlyList<string> PlayableSubtitlesFor(string mediaFileName, IEnumerable<string> fileNames)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(mediaFileName);
+        return fileNames
+            .Where(f => string.Equals(Path.GetExtension(f), ".vtt", StringComparison.OrdinalIgnoreCase)
+                        && SubtitleLanguage(f) is { } lang
+                        && string.Equals(f, $"{baseName}.{lang}{Path.GetExtension(f)}", StringComparison.Ordinal))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+    }
 }
