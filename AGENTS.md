@@ -89,7 +89,7 @@ docker compose up --build -d        # http://localhost:7022
 - `TimeoutMinutes` (`YtDlp__TimeoutMinutes`): default `180`. Kills active process tree if exceeded. Set to `0` for unlimited.
 - `DisconnectGraceSeconds` (`YtDlp__DisconnectGraceSeconds`): default `30`. Cancels active download if browser tab disconnects for longer than this duration.
 - `ExecutablePath` (`YtDlp__ExecutablePath`): full path to yt-dlp executable. Defaults to `/usr/local/bin/yt-dlp` in container and `tools/yt-dlp.exe` on Windows.
-- `DenoPath` (`YtDlp__DenoPath`): full path to the `deno` executable (optional). Its directory is prepended to PATH for yt-dlp.
+- `DenoPath` (`YtDlp__DenoPath`): full path to the `deno` executable (optional). Its directory is prepended to PATH for yt-dlp. When empty, yt-dlp is given `--js-runtimes node` (the container ships Node.js for YouTube extraction).
 - Kestrel listens on `http://0.0.0.0:8080` (appsettings + `ASPNETCORE_URLS`). HTTPS/HSTS are expected to be terminated by a reverse proxy.
 
 ## Conventions

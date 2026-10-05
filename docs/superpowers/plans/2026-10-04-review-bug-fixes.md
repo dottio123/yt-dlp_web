@@ -483,3 +483,9 @@ These are the inputs most likely to hurt real users that the code paths above co
 - [ ] `dotnet test tests/yt-dlp_web.Tests/yt-dlp_web.Tests.csproj` all green; `dotnet build yt-dlp_web.slnx` 0 errors.
 - [ ] `git log --oneline master..` shows one commit per task.
 - [ ] Open a PR from `fix/review-bug-fixes` to `master` (or merge locally). Tag a release (`v1.3`) and rebuild `Package/` artifacts only after merge.
+
+## Follow-ups (post-review)
+
+- [x] `docs: correct DenoPath, job token and key notes` — `DenoPath` must be the full path to the `deno` executable; job token format; key and path rules in AGENTS.md.
+- [x] `fix: match regional English subtitle tracks` — "English Only" now passes `--sub-langs en.*` so `en-US`/`en-GB`/`en-AU` tracks download (YouTube `NEDFUjqA1s8` had no plain `en`).
+- [x] `fix: tell yt-dlp to use Node.js as its JavaScript runtime` — `--js-runtimes node` unless `YtDlp:DenoPath` is set; yt-dlp only enables Deno by default.

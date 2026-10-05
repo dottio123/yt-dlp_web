@@ -140,7 +140,7 @@ public class YtDlpArgumentsTests
     }
 
     [Fact]
-    public void Build_AddsDenoRuntimeOnlyWhenGiven()
+    public void Build_ChoosesJsRuntime()
     {
         var req = new DownloadRequest
         {
@@ -154,7 +154,10 @@ public class YtDlpArgumentsTests
         Assert.Equal("deno:/d/deno", argsWithDeno[denoIndex + 1]);
 
         var argsWithoutDeno = YtDlpArguments.Build(req, uri!, "/dl/%(title)s.%(ext)s", null);
-        Assert.DoesNotContain("--js-runtimes", argsWithoutDeno);
+        var nodeIndex = argsWithoutDeno.IndexOf("--js-runtimes");
+        Assert.True(nodeIndex >= 0);
+        Assert.Equal("node", argsWithoutDeno[nodeIndex + 1]);
+        Assert.Single(argsWithoutDeno, a => a == "--js-runtimes");
     }
 
     [Fact]

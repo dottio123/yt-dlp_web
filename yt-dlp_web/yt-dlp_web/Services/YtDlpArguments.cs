@@ -97,11 +97,9 @@ public static partial class YtDlpArguments
             args.Insert(1, req.Format);
         }
 
-        if (!string.IsNullOrWhiteSpace(denoPath))
-        {
-            args.Insert(0, "--js-runtimes");
-            args.Insert(1, $"deno:{denoPath}");
-        }
+        // yt-dlp only enables Deno by default; the container ships Node.js instead
+        args.Insert(0, "--js-runtimes");
+        args.Insert(1, string.IsNullOrWhiteSpace(denoPath) ? "node" : $"deno:{denoPath}");
 
         args.Add("--match-filter");
         args.Add("!is_live");
