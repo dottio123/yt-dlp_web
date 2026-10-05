@@ -473,7 +473,7 @@ These are the inputs most likely to hurt real users that the code paths above co
 - [x] **Step 3: docker-compose.yml.** Add `- TZ=${TZ:-UTC}` to `environment`, with a comment saying the nightly update runs at local midnight in this zone. `tzdata` is already installed in the image.
 - [x] **Step 4: Docs.** Rewrite `docs/docker-and-pwa-setup.md` as Docker + reverse proxy setup (rename it to `docs/docker-setup.md`). Cover the compose service, the `YtDlp__*` settings from Tasks 5–6 (with `MAX_CONCURRENT_DOWNLOADS` and `DOWNLOAD_TIMEOUT_MINUTES`, their defaults, and that `0` means no download limit), `TZ`, the Caddyfile above, and a note that the app has no login and must be protected by the proxy or kept on a private network.
 - [x] **Step 5: AGENTS.md.** Update "Build and run" (test command, `YtDlp` settings) and remove the fixed items from "Known issues". Keep the "Rules for changes" section.
-- [ ] **Step 6 (manual):** `docker compose up --build -d`, then a full smoke test: download video, audio-only (mp3), with subtitles and thumbnail; play from History; delete; view Logs; run Update.
+- [x] **Step 6 (manual):** `docker compose up --build -d`, then a full smoke test: download video, audio-only (mp3), with subtitles and thumbnail; play from History; delete; view Logs; run Update.
 - [x] **Step 7:** Commit: `chore: fix Caddyfile, drop unused PWA files, set TZ, update docs (F9)`
 
 ---

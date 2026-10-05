@@ -28,7 +28,7 @@ yt-dlp_web/yt-dlp_web/                  server project (the app)
   Program.cs                            DI, middleware, and all minimal API endpoints
   Services/DownloadService.cs           orchestrates downloads, process lifecycle, and progress reporting
   Services/DownloadStore.cs             IDownloadStore: safe path traversal validation, file listing, deletion
-  Services/DownloadOutputLocator.cs     locates finished download files by unique 8-character job token
+  Services/DownloadOutputLocator.cs     locates finished download files by unique per-job token (`yyyyMMdd_HHmmss_` plus 8 hex characters)
   Services/DownloadLimiter.cs           concurrency limiter with queuing and saturation detection
   Services/CircuitConnectionTracker.cs  tracks browser disconnects to abort active downloads after grace period
   Services/ProgressParser.cs            parses yt-dlp stdout/stderr progress templates and lifecycle stages
@@ -89,7 +89,7 @@ docker compose up --build -d        # http://localhost:7022
 - `TimeoutMinutes` (`YtDlp__TimeoutMinutes`): default `180`. Kills active process tree if exceeded. Set to `0` for unlimited.
 - `DisconnectGraceSeconds` (`YtDlp__DisconnectGraceSeconds`): default `30`. Cancels active download if browser tab disconnects for longer than this duration.
 - `ExecutablePath` (`YtDlp__ExecutablePath`): full path to yt-dlp executable. Defaults to `/usr/local/bin/yt-dlp` in container and `tools/yt-dlp.exe` on Windows.
-- `DenoPath` (`YtDlp__DenoPath`): optional path to Deno binary or directory containing deno, prepended to PATH for yt-dlp.
+- `DenoPath` (`YtDlp__DenoPath`): full path to the `deno` executable (optional). Its directory is prepended to PATH for yt-dlp.
 - Kestrel listens on `http://0.0.0.0:8080` (appsettings + `ASPNETCORE_URLS`). HTTPS/HSTS are expected to be terminated by a reverse proxy.
 
 ## Conventions
@@ -110,11 +110,10 @@ docker compose up --build -d        # http://localhost:7022
 - **Never build a process command line by string concatenation.** Use
   `ProcessStartInfo.ArgumentList`, and pass user input only as values of options you control. Put
   `--` before the URL. Validate `Format`, `AudioFormat`, and `SubLangs` against an allow-list.
-- Any endpoint that takes a file name must resolve it with `Path.GetFullPath` and check it is inside
-  the downloads directory **including the trailing directory separator**; reuse one helper rather than
-  copying the check (`IDownloadStore.TryResolve`).
-- Do not commit anything under `config/` (Data Protection keys, logs, downloads). The repo currently
-  contains a committed key in `config/keys/`; treat it as compromised.
+- Any endpoint that takes a file name must resolve it with `IDownloadStore.TryResolve`; don't write a
+  new check.
+- Do not commit anything under `config/` (Data Protection keys, logs, downloads). `config/` is
+  git-ignored. An old Data Protection key is still in git history; treat it as compromised and never reuse it.
 - Do not add new loopback `HttpClient` calls from server components; inject the service instead.
 - Keep file-type lists (audio/video/image/subtitle extensions) in one shared place; use `MediaFileTypes`.
 - Do not commit build outputs or the `Package/*.zip` artifacts when changing code.

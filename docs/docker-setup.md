@@ -28,7 +28,7 @@ The container is configured via environment variables in `docker-compose.yml` or
 | `DISCONNECT_GRACE_SECONDS` | `30` | Grace period in seconds before an active download is aborted when a browser tab disconnects. Set to `0` to cancel immediately. |
 | `TZ` | `UTC` | Time zone used for application log timestamps and the nightly yt-dlp update schedule (which runs at local midnight). |
 | `YtDlp__ExecutablePath` | *(auto)* | Absolute path to the `yt-dlp` executable. Defaults to `/usr/local/bin/yt-dlp` in the Linux container and `tools/yt-dlp.exe` on Windows. |
-| `YtDlp__DenoPath` | *(empty)* | Path to the Deno binary or directory containing `deno`. When provided, prepended to `PATH` for yt-dlp JavaScript extraction. |
+| `YtDlp__DenoPath` | *(empty)* | Full path to the `deno` executable (optional). When set, yt-dlp uses Deno for JavaScript extraction and its directory is prepended to `PATH`. |
 | `UPDATE_YTDLP` | `1` | Controls whether `docker-entrypoint.sh` updates yt-dlp on startup. When `1`, downloads the latest binary from `YTDLP_URL` before launching the app. |
 | `YTDLP_URL` | `https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp` | URL used by `docker-entrypoint.sh` to download or update the `yt-dlp` binary on container startup. |
 
