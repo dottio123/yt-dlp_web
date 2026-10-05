@@ -480,9 +480,9 @@ These are the inputs most likely to hurt real users that the code paths above co
 
 ## Finishing
 
-- [ ] `dotnet test tests/yt-dlp_web.Tests/yt-dlp_web.Tests.csproj` all green; `dotnet build yt-dlp_web.slnx` 0 errors.
-- [ ] `git log --oneline master..` shows one commit per task.
-- [ ] Open a PR from `fix/review-bug-fixes` to `master` (or merge locally). Tag a release (`v1.3`) and rebuild `Package/` artifacts only after merge.
+- [x] `dotnet test tests/yt-dlp_web.Tests/yt-dlp_web.Tests.csproj` all green; `dotnet build yt-dlp_web.slnx` 0 errors.
+- [x] `git log --oneline master..` shows one commit per task.
+- [x] Open a PR from `fix/review-bug-fixes` to `master` (or merge locally). Tag a release (`v1.2.1`) and rebuild `Package/` artifacts only after merge.
 
 ## Follow-ups (post-review)
 

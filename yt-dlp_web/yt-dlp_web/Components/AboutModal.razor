@@ -37,7 +37,7 @@
                 </button>
                 <button class="btn btn-sm @(activeTab == "changelog" ? "btn-youtube" : "btn-secondary")" @onclick="@(() => activeTab = "changelog")">
                     Changelog
-                    <span class="badge rounded-pill bg-danger ms-1" style="font-size: 0.65rem;">v1.2</span>
+                    <span class="badge rounded-pill bg-danger ms-1" style="font-size: 0.65rem;">v1.2.1</span>
                 </button>
             </div>
 
@@ -65,11 +65,28 @@
                 {
                     <!-- Changelog Timeline -->
                     <div class="d-flex flex-column gap-3">
+                        <!-- v1.2.1 -->
+                        <div class="modern-card-inner p-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="badge bg-danger rounded-pill px-2 py-1 fw-bold">v1.2.1</span>
+                                <small class="text-muted">Latest Release</small>
+                            </div>
+                            <h6 class="fw-bold mb-2">Security, Reliability & Subtitle Fixes</h6>
+                            <ul class="small text-secondary mb-0 ps-3">
+                                <li><strong>Safer Downloads:</strong> Download options can no longer inject extra yt-dlp commands, and file download/delete paths are strictly checked.</li>
+                                <li><strong>Cancel & Limits:</strong> New Cancel button; closing the tab stops its download; live streams are rejected; timeouts and a concurrent-download cap.</li>
+                                <li><strong>Correct Files:</strong> Simultaneous downloads always get their own file; very long titles no longer fail.</li>
+                                <li><strong>Subtitles:</strong> English Only now finds regional tracks (en-US, en-GB…), and the History player shows subtitles.</li>
+                                <li><strong>YouTube:</strong> yt-dlp now uses Node.js as its JavaScript runtime, so all formats are available.</li>
+                                <li><strong>Polish:</strong> Accurate total size in progress, separate update error card, resilient rotating logs, configurable yt-dlp path and time zone.</li>
+                            </ul>
+                        </div>
+
                         <!-- v1.2.0 -->
                         <div class="modern-card-inner p-3">
                             <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="badge bg-danger rounded-pill px-2 py-1 fw-bold">v1.2.0</span>
-                                <small class="text-muted">Latest Release</small>
+                                <span class="badge bg-secondary rounded-pill px-2 py-1 fw-bold">v1.2.0</span>
+                                <small class="text-muted">Previous</small>
                             </div>
                             <h6 class="fw-bold mb-2">Real-Time Progress & Media Preview Player</h6>
                             <ul class="small text-secondary mb-0 ps-3">
@@ -85,7 +102,7 @@
                         <div class="modern-card-inner p-3">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <span class="badge bg-secondary rounded-pill px-2 py-1 fw-bold">v1.1.0</span>
-                                <small class="text-muted">Previous</small>
+                                <small class="text-muted">Earlier</small>
                             </div>
                             <h6 class="fw-bold mb-2">History & Diagnostics</h6>
                             <ul class="small text-secondary mb-0 ps-3">
